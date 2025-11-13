@@ -54,9 +54,9 @@
 
 static bool          s_verbose = true;
 static lv_indev_t*   s_indev   = nullptr;
-static uint8_t       s_rot     = 1;    // default: swap XY (portrait panel -> LVGL landscape)
-static uint16_t      s_w       = 1280; // LVGL logical width
-static uint16_t      s_h       = 800;  // LVGL logical height
+static uint8_t       s_rot     = 0;    // default: orientation matches LVGL logical coordinates
+static uint16_t      s_w       = 800;  // Updated at init from LVGL display
+static uint16_t      s_h       = 1280; // Updated at init from LVGL display
 
 // Construct with required pins (your header shows this ctor signature)
 static gsl3680_touch s_touch(TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
@@ -101,7 +101,7 @@ bool touch_init_and_register(lv_disp_t* disp) {
     return false;
   }
 
-  // Determine LVGL logical resolution (your code runs 1280x800 logical)
+  // Determine LVGL logical resolution (now matching the panel's 800x1280 portrait canvas)
   s_w = lv_disp_get_hor_res(disp);
   s_h = lv_disp_get_ver_res(disp);
   Serial.printf("[touch] LVGL logical size: %ux%u\n", s_w, s_h);
@@ -110,8 +110,8 @@ bool touch_init_and_register(lv_disp_t* disp) {
   Serial.printf("[touch] begin(sda=%d scl=%d rst=%d int=%d)\n", TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
   s_touch.begin();
 
-  // Start with swapXY (1). If L↔R still inverted, try 2 or 3 in setup().
-  touch_set_rotation(1);
+  // Start with the panel's natural orientation. Adjust in setup() if required.
+  touch_set_rotation(0);
 
   // Register LVGL input device
   lv_indev_drv_t drv;

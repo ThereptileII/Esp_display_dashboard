@@ -159,9 +159,17 @@ static void build_grid(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_set_size(cont_grid, grid_w, grid_h);
     lv_obj_align(cont_grid, LV_ALIGN_CENTER, 0, (top_h - bot_h)/2);
 
-    static lv_coord_t cols[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-    static lv_coord_t rows[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-    lv_obj_set_grid_dsc_array(cont_grid, cols, rows);
+    const bool portrait = (w < h);
+
+    if (portrait) {
+        static lv_coord_t cols_portrait[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+        static lv_coord_t rows_portrait[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+        lv_obj_set_grid_dsc_array(cont_grid, cols_portrait, rows_portrait);
+    } else {
+        static lv_coord_t cols_landscape[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+        static lv_coord_t rows_landscape[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+        lv_obj_set_grid_dsc_array(cont_grid, cols_landscape, rows_landscape);
+    }
     lv_obj_set_style_pad_row(cont_grid, 12, 0);
     lv_obj_set_style_pad_column(cont_grid, 12, 0);
     lv_obj_set_style_pad_all(cont_grid, 12, 0);
@@ -172,11 +180,19 @@ static void build_grid(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_t* c_wind  = make_metric_card(cont_grid, "WIND AWA", "14.2 kn", COL_CYAN);
     lv_obj_t* c_ap    = make_metric_card(cont_grid, "AUTOPILOT", "TRACK", COL_ORANGE);
 
-    lv_obj_set_grid_cell(c_speed, LV_GRID_ALIGN_STRETCH, 0, 2, LV_GRID_ALIGN_STRETCH, 0, 1);
-    lv_obj_set_grid_cell(c_rpm,   LV_GRID_ALIGN_STRETCH, 2, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
-    lv_obj_set_grid_cell(c_batt,  LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
-    lv_obj_set_grid_cell(c_wind,  LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
-    lv_obj_set_grid_cell(c_ap,    LV_GRID_ALIGN_STRETCH, 2, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
+    if (portrait) {
+        lv_obj_set_grid_cell(c_speed, LV_GRID_ALIGN_STRETCH, 0, 2, LV_GRID_ALIGN_STRETCH, 0, 1);
+        lv_obj_set_grid_cell(c_rpm,   LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
+        lv_obj_set_grid_cell(c_batt,  LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
+        lv_obj_set_grid_cell(c_wind,  LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 2, 1);
+        lv_obj_set_grid_cell(c_ap,    LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 2, 1);
+    } else {
+        lv_obj_set_grid_cell(c_speed, LV_GRID_ALIGN_STRETCH, 0, 2, LV_GRID_ALIGN_STRETCH, 0, 1);
+        lv_obj_set_grid_cell(c_rpm,   LV_GRID_ALIGN_STRETCH, 2, 1, LV_GRID_ALIGN_STRETCH, 0, 1);
+        lv_obj_set_grid_cell(c_batt,  LV_GRID_ALIGN_STRETCH, 0, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
+        lv_obj_set_grid_cell(c_wind,  LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
+        lv_obj_set_grid_cell(c_ap,    LV_GRID_ALIGN_STRETCH, 2, 1, LV_GRID_ALIGN_STRETCH, 1, 1);
+    }
 
     // Small badge on speed card
     lv_obj_t* badge = lv_label_create(c_speed);
