@@ -56,8 +56,8 @@ void gsl3680_touch::begin()
         },
         .flags = {
             .swap_xy = 0,
-            .mirror_x = 1,
-            .mirror_y = 1,
+            .mirror_x = 0,
+            .mirror_y = 0,
         },
     };
 
@@ -73,28 +73,27 @@ bool gsl3680_touch::getTouch(uint16_t *x, uint16_t *y)
     return touchpad_pressed;
 }
 
-void gsl3680_touch::set_rotation(uint8_t r){
-switch(r){
-    case 0:
-        esp_lcd_touch_set_swap_xy(tp, false);   
-        esp_lcd_touch_set_mirror_x(tp, false);
-        esp_lcd_touch_set_mirror_y(tp, false);
-        break;
-    case 1:
-        esp_lcd_touch_set_swap_xy(tp, false);
-        esp_lcd_touch_set_mirror_x(tp, true);
-        esp_lcd_touch_set_mirror_y(tp, true);
-        break;
-    case 2:
-        esp_lcd_touch_set_swap_xy(tp, false);   
-        esp_lcd_touch_set_mirror_x(tp, false);
-        esp_lcd_touch_set_mirror_y(tp, false);
-        break;
-    case 3:
-        esp_lcd_touch_set_swap_xy(tp, false);   
-        esp_lcd_touch_set_mirror_x(tp, true);
-        esp_lcd_touch_set_mirror_y(tp, true);
-        break;
+void gsl3680_touch::set_rotation(uint8_t r) {
+    switch (r & 3) {
+        case 0: // 0°
+            esp_lcd_touch_set_swap_xy(tp, false);
+            esp_lcd_touch_set_mirror_x(tp, false);
+            esp_lcd_touch_set_mirror_y(tp, false);
+            break;
+        case 1: // 90°
+            esp_lcd_touch_set_swap_xy(tp, true);
+            esp_lcd_touch_set_mirror_x(tp, true);
+            esp_lcd_touch_set_mirror_y(tp, false);
+            break;
+        case 2: // 180°
+            esp_lcd_touch_set_swap_xy(tp, false);
+            esp_lcd_touch_set_mirror_x(tp, true);
+            esp_lcd_touch_set_mirror_y(tp, true);
+            break;
+        case 3: // 270°
+            esp_lcd_touch_set_swap_xy(tp, true);
+            esp_lcd_touch_set_mirror_x(tp, false);
+            esp_lcd_touch_set_mirror_y(tp, true);
+            break;
     }
-
 }
