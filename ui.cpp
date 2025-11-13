@@ -1,29 +1,17 @@
 #include "ui.h"
+#include "fonts.h"
 
 // ---------- Font selection (no external fonts required) ----------
 #if defined(USE_ORBITRON_FONTS)
-// If you DO have orbitron_20/32/48 .c files in the project, define USE_ORBITRON_FONTS
-extern "C" {
-    LV_FONT_DECLARE(orbitron_20);
-    LV_FONT_DECLARE(orbitron_32);
-    LV_FONT_DECLARE(orbitron_48);
-}
-static const lv_font_t* FONT_SM = &orbitron_20;
-static const lv_font_t* FONT_MD = &orbitron_32;
-static const lv_font_t* FONT_LG = &orbitron_48;
+static const lv_font_t* FONT_SM = &orbitron_20_700;
+static const lv_font_t* FONT_MD = &orbitron_32_800;
+static const lv_font_t* FONT_LG = &orbitron_48_900;
 #else
 // Safe defaults: use LVGL's default font for all sizes (always available)
-#define FONT_SM LV_FONT_DEFAULT
-#define FONT_MD LV_FONT_DEFAULT
-#define FONT_LG LV_FONT_DEFAULT
+static const lv_font_t* FONT_SM = LV_FONT_DEFAULT;
+static const lv_font_t* FONT_MD = LV_FONT_DEFAULT;
+static const lv_font_t* FONT_LG = LV_FONT_DEFAULT;
 #endif
-
-
-
-
-static const lv_font_t* FONT_SM = (const lv_font_t*)&orbitron_20;
-static const lv_font_t* FONT_MD = (const lv_font_t*)&orbitron_32;
-static const lv_font_t* FONT_LG = (const lv_font_t*)&orbitron_48;
 
 // ---- Colors ----
 static const lv_color_t COL_BG     = lv_color_hex(0x0A0F14);
