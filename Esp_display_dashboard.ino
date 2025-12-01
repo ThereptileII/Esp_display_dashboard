@@ -1,5 +1,6 @@
 #include "debug_display.h"
 #include "ui.h"
+#include "touch_integration.h"
 
 static uint32_t s_last_ms = 0;
 
@@ -10,6 +11,10 @@ void setup() {
   if (!dbg_display_init()) return;  // sets up panel + LVGL + flush
   dbg_dump_env();
   // dbg_panel_sanity_pattern();    // optional once; comment it out after first test
+
+  if (!touch_init_and_register(dbg_lvgl_display())) {
+    Serial.println("[touch] WARN: touch init failed");
+  }
 
   // Build UI
   ui_init();        // creates the pages/labels

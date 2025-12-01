@@ -1,8 +1,9 @@
 #include "ui.h"
 #include "fonts.h"
+#include "debug_config.h"
 
 // ---------- Font selection (no external fonts required) ----------
-#if defined(USE_ORBITRON_FONTS)
+#if defined(USE_ORBITRON) || defined(USE_ORBITRON_FONTS)
 static const lv_font_t* FONT_SM = &orbitron_20_700;
 static const lv_font_t* FONT_MD = &orbitron_32_800;
 static const lv_font_t* FONT_LG = &orbitron_48_900;
