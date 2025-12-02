@@ -7,11 +7,12 @@
 #include "esp_lcd_touch.h"
 #include "esp_lcd_gsl3680.h"
 #include "gsl3680_touch.h"
+#include <Arduino.h>
 
 #define CONFIG_LCD_HRES 800
 #define CONFIG_LCD_VRES 1280
 
-static const char *TAG = "example";
+static const char *TAG = "gsl3680";
 
 esp_lcd_touch_handle_t tp;
 esp_lcd_panel_io_handle_t tp_io_handle;
@@ -27,8 +28,15 @@ gsl3680_touch::gsl3680_touch(int8_t sda_pin, int8_t scl_pin, int8_t rst_pin, int
     _int = int_pin;
 }
 
-void gsl3680_touch::begin()
+bool gsl3680_touch::begin()
 {
+    Serial.printf("[gsl3680] begin(sda=%d scl=%d rst=%d int=%d)\n", _sda, _scl, _rst, _int);
+
+    if (_sda < 0 || _scl < 0) {
+        Serial.println("[gsl3680] ERROR: SDA/SCL pins not set");
+        return false;
+    }
+
     i2c_config_t i2c_conf = {
         .mode = I2C_MODE_MASTER,
         .sda_io_num = (gpio_num_t)_sda,
@@ -38,12 +46,25 @@ void gsl3680_touch::begin()
     };
     i2c_conf.master.clk_speed = 400000; // 400kHz
 
-    ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2c_conf));
-    ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, i2c_conf.mode, 0, 0, 0));
+    esp_err_t err = i2c_param_config(I2C_NUM_0, &i2c_conf);
+    if (err != ESP_OK) {
+        Serial.printf("[gsl3680] ERROR: i2c_param_config failed: %s\n", esp_err_to_name(err));
+        return false;
+    }
+
+    err = i2c_driver_install(I2C_NUM_0, i2c_conf.mode, 0, 0, 0);
+    if (err != ESP_OK) {
+        Serial.printf("[gsl3680] ERROR: i2c_driver_install failed: %s\n", esp_err_to_name(err));
+        return false;
+    }
 
     esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_GSL3680_CONFIG();
     ESP_LOGI(TAG, "Initialize touch IO (I2C)");
-    esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)I2C_NUM_0, &tp_io_config, &tp_io_handle);
+    err = esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)I2C_NUM_0, &tp_io_config, &tp_io_handle);
+    if (err != ESP_OK) {
+        Serial.printf("[gsl3680] ERROR: new_panel_io_i2c failed: %s\n", esp_err_to_name(err));
+        return false;
+    }
 
     esp_lcd_touch_config_t tp_cfg = {
         .x_max = CONFIG_LCD_HRES,
@@ -62,18 +83,54 @@ void gsl3680_touch::begin()
     };
 
     ESP_LOGI(TAG, "Initialize touch controller gsl3680");
-    ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_gsl3680(tp_io_handle, &tp_cfg, &tp));
+    err = esp_lcd_touch_new_i2c_gsl3680(tp_io_handle, &tp_cfg, &tp);
+    if (err != ESP_OK) {
+        Serial.printf("[gsl3680] ERROR: touch_new_i2c_gsl3680 failed: %s\n", esp_err_to_name(err));
+        return false;
+    }
+
+    Serial.println("[gsl3680] init OK");
+    return true;
 }
 
-bool gsl3680_touch::getTouch(uint16_t *x, uint16_t *y)
+bool gsl3680_touch::getTouch(uint16_t *x, uint16_t *y, uint8_t *count_out, uint16_t *strength_out)
 {
-    esp_lcd_touch_read_data(tp);
+    if (!x || !y) {
+        Serial.println("[gsl3680] WARN: null coordinate pointers passed to getTouch");
+        return false;
+    }
+
+    if (!tp) {
+        Serial.println("[gsl3680] ERROR: touch handle is null; begin() probably failed");
+        *x = *y = 0;
+        return false;
+    }
+
+    esp_err_t err = esp_lcd_touch_read_data(tp);
+    if (err != ESP_OK) {
+        static uint32_t last_err_ms = 0;
+        uint32_t now = millis();
+        if (now - last_err_ms > 500) {
+            Serial.printf("[gsl3680] read_data failed: %s\n", esp_err_to_name(err));
+            last_err_ms = now;
+        }
+        *x = *y = 0;
+        return false;
+    }
+
     bool touchpad_pressed = esp_lcd_touch_get_coordinates(tp, x, y, touch_strength, &touch_cnt, 1);
+
+    if (count_out) *count_out = touch_cnt;
+    if (strength_out) *strength_out = touch_cnt ? touch_strength[0] : 0;
 
     return touchpad_pressed;
 }
 
 void gsl3680_touch::set_rotation(uint8_t r) {
+    if (!tp) {
+        Serial.println("[gsl3680] WARN: set_rotation called before init");
+        return;
+    }
     switch (r & 3) {
         case 0: // 0°
             esp_lcd_touch_set_swap_xy(tp, false);
