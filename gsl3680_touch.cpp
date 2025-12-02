@@ -46,6 +46,9 @@ bool gsl3680_touch::begin()
     };
     i2c_conf.master.clk_speed = 400000; // 400kHz
 
+    // Recreate the bus each time to avoid stale drivers from earlier boots
+    i2c_driver_delete(I2C_NUM_0);
+
     esp_err_t err = i2c_param_config(I2C_NUM_0, &i2c_conf);
     if (err != ESP_OK) {
         Serial.printf("[gsl3680] ERROR: i2c_param_config failed: %s\n", esp_err_to_name(err));
@@ -57,6 +60,21 @@ bool gsl3680_touch::begin()
         Serial.printf("[gsl3680] ERROR: i2c_driver_install failed: %s\n", esp_err_to_name(err));
         return false;
     }
+
+    // Quick probe to confirm the device ACKs on the expected address
+    uint8_t ping_reg = 0x00;
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (ESP_LCD_TOUCH_IO_I2C_GSL3680_ADDRESS << 1) | I2C_MASTER_WRITE, true);
+    i2c_master_write_byte(cmd, ping_reg, true);
+    i2c_master_stop(cmd);
+    err = i2c_master_cmd_begin(I2C_NUM_0, cmd, 50 / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(cmd);
+    if (err != ESP_OK) {
+        Serial.printf("[gsl3680] ERROR: device did not ACK at 0x%02X: %s\n", ESP_LCD_TOUCH_IO_I2C_GSL3680_ADDRESS, esp_err_to_name(err));
+        return false;
+    }
+    Serial.println("[gsl3680] I2C ping OK");
 
     esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_GSL3680_CONFIG();
     ESP_LOGI(TAG, "Initialize touch IO (I2C)");
