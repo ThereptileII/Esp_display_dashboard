@@ -57,6 +57,8 @@ static lv_indev_t*   s_indev   = nullptr;
 static uint8_t       s_rot     = 0;    // default: orientation matches LVGL logical coordinates
 static uint16_t      s_w       = 800;  // Updated at init from LVGL display
 static uint16_t      s_h       = 1280; // Updated at init from LVGL display
+static lv_disp_t*    s_disp    = nullptr;
+static lv_obj_t*     s_touch_dot = nullptr;
 
 // Construct with required pins (your header shows this ctor signature)
 static gsl3680_touch s_touch(TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
@@ -67,6 +69,22 @@ void touch_set_rotation(uint8_t r) {
   s_rot = (r & 3);
   s_touch.set_rotation(s_rot);
   if (s_verbose) Serial.printf("[touch] set_rotation(%u)\n", s_rot);
+}
+
+static void ensure_touch_indicator() {
+  if (!s_disp || s_touch_dot) return;
+
+  lv_obj_t* layer = lv_disp_get_layer_top(s_disp);
+  s_touch_dot     = lv_obj_create(layer);
+  lv_obj_remove_style_all(s_touch_dot);
+  lv_obj_set_size(s_touch_dot, 18, 18);
+  lv_obj_set_style_radius(s_touch_dot, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(s_touch_dot, lv_color_hex(0xFF3B30), 0);
+  lv_obj_set_style_bg_opa(s_touch_dot, LV_OPA_COVER, 0);
+  lv_obj_set_style_outline_color(s_touch_dot, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_outline_width(s_touch_dot, 2, 0);
+  lv_obj_add_flag(s_touch_dot, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_foreground(s_touch_dot);
 }
 
 static void touch_read_cb(lv_indev_drv_t* indev, lv_indev_data_t* data) {
@@ -83,6 +101,19 @@ static void touch_read_cb(lv_indev_drv_t* indev, lv_indev_data_t* data) {
   data->state   = pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
   data->point.x = lx;
   data->point.y = ly;
+
+  ensure_touch_indicator();
+  if (s_touch_dot) {
+    lv_coord_t dot_w = lv_obj_get_width(s_touch_dot);
+    lv_coord_t dot_h = lv_obj_get_height(s_touch_dot);
+    lv_obj_set_pos(s_touch_dot, lx - dot_w / 2, ly - dot_h / 2);
+    if (pressed) {
+      lv_obj_clear_flag(s_touch_dot, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_move_foreground(s_touch_dot);
+    } else {
+      lv_obj_add_flag(s_touch_dot, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
 
   if (s_verbose) {
     static uint32_t last = 0;
@@ -106,6 +137,8 @@ bool touch_init_and_register(lv_disp_t* disp) {
   s_h = lv_disp_get_ver_res(disp);
   Serial.printf("[touch] LVGL logical size: %ux%u\n", s_w, s_h);
 
+  s_disp = disp;
+
   // Vendor init
   Serial.printf("[touch] begin(sda=%d scl=%d rst=%d int=%d)\n", TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
   s_touch.begin();
@@ -127,5 +160,6 @@ bool touch_init_and_register(lv_disp_t* disp) {
   }
 
   Serial.println("[touch] registered OK");
+  ensure_touch_indicator();
   return true;
 }
