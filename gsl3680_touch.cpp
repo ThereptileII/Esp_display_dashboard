@@ -3,7 +3,7 @@
 #include "freertos/task.h"
 #include "esp_err.h"
 #include "esp_log.h"
-#include "driver/i2c_master.h"
+#include "driver/i2c.h"
 #include "esp_lcd_touch.h"
 #include "esp_lcd_gsl3680.h"
 #include "gsl3680_touch.h"
@@ -16,7 +16,7 @@ static const char *TAG = "gsl3680";
 
 esp_lcd_touch_handle_t tp;
 esp_lcd_panel_io_handle_t tp_io_handle;
-static i2c_master_bus_handle_t s_i2c_bus = nullptr;
+static bool s_i2c_ready = false;
 
 uint16_t touch_strength[1];
 uint8_t touch_cnt = 0;
@@ -38,31 +38,38 @@ bool gsl3680_touch::begin()
         return false;
     }
 
-    if (s_i2c_bus) {
-        Serial.println("[gsl3680] tearing down existing I2C bus");
-        i2c_del_master_bus(s_i2c_bus);
-        s_i2c_bus = nullptr;
-    }
+    // Bring up the legacy I2C driver so we stay compatible with esp_lcd's current IO layer
+    i2c_driver_delete(I2C_NUM_0);  // ignore errors; just ensures a clean slate
 
-    i2c_master_bus_config_t bus_cfg = {
-        .i2c_port = I2C_NUM_0,
+    i2c_config_t cfg = {
+        .mode = I2C_MODE_MASTER,
         .sda_io_num = (gpio_num_t)_sda,
         .scl_io_num = (gpio_num_t)_scl,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,
-        .flags = {
-            .enable_internal_pullup = true,
+        .sda_pullup_en = GPIO_PULLUP_ENABLE,
+        .scl_pullup_en = GPIO_PULLUP_ENABLE,
+        .master = {
+            .clk_speed = 400000,
         },
+        .clk_flags = 0,
     };
-    esp_err_t err = i2c_new_master_bus(&bus_cfg, &s_i2c_bus);
+
+    esp_err_t err = i2c_param_config(I2C_NUM_0, &cfg);
     if (err != ESP_OK) {
-        Serial.printf("[gsl3680] ERROR: i2c_new_master_bus failed: %s\n", esp_err_to_name(err));
+        Serial.printf("[gsl3680] ERROR: i2c_param_config failed: %s\n", esp_err_to_name(err));
         return false;
     }
-    Serial.println("[gsl3680] I2C master bus ready");
+
+    err = i2c_driver_install(I2C_NUM_0, cfg.mode, 0, 0, 0);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        Serial.printf("[gsl3680] ERROR: i2c_driver_install failed: %s\n", esp_err_to_name(err));
+        return false;
+    }
+    s_i2c_ready = true;
+    Serial.println("[gsl3680] legacy I2C driver ready");
 
     // Quick probe to confirm the device ACKs on the expected address
-    err = i2c_master_probe(s_i2c_bus, ESP_LCD_TOUCH_IO_I2C_GSL3680_ADDRESS, 50 / portTICK_PERIOD_MS);
+    uint8_t ping_reg = 0;
+    err = i2c_master_write_to_device(I2C_NUM_0, ESP_LCD_TOUCH_IO_I2C_GSL3680_ADDRESS, &ping_reg, 1, 50 / portTICK_PERIOD_MS);
     if (err != ESP_OK) {
         Serial.printf("[gsl3680] ERROR: device did not ACK at 0x%02X: %s\n", ESP_LCD_TOUCH_IO_I2C_GSL3680_ADDRESS, esp_err_to_name(err));
         return false;
@@ -71,7 +78,11 @@ bool gsl3680_touch::begin()
 
     esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_GSL3680_CONFIG();
     ESP_LOGI(TAG, "Initialize touch IO (I2C)");
-    err = esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)s_i2c_bus, &tp_io_config, &tp_io_handle);
+    if (!s_i2c_ready) {
+        Serial.println("[gsl3680] ERROR: I2C bus not ready");
+        return false;
+    }
+    err = esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)I2C_NUM_0, &tp_io_config, &tp_io_handle);
     if (err != ESP_OK) {
         Serial.printf("[gsl3680] ERROR: new_panel_io_i2c failed: %s\n", esp_err_to_name(err));
         return false;
