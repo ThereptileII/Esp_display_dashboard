@@ -91,7 +91,9 @@ static void touch_read_cb(lv_indev_drv_t* indev, lv_indev_data_t* data) {
   (void)indev;
 
   uint16_t rx = 0, ry = 0;
-  bool pressed = s_touch.getTouch(&rx, &ry);  // vendor API: returns true while touching
+  uint8_t  count   = 0;
+  uint16_t strength = 0;
+  bool pressed = s_touch.getTouch(&rx, &ry, &count, &strength);  // vendor API: returns true while touching
 
   // Clamp to LVGL logical bounds (s_touch already applies rotation internally)
   uint16_t lx = rx, ly = ry;
@@ -119,8 +121,8 @@ static void touch_read_cb(lv_indev_drv_t* indev, lv_indev_data_t* data) {
     static uint32_t last = 0;
     uint32_t now = millis();
     if (now - last > 150) {
-      Serial.printf("[touch] raw=(%u,%u) -> lv=(%u,%u) pressed=%d rot=%u\n",
-                    rx, ry, lx, ly, (int)pressed, s_rot);
+      Serial.printf("[touch] raw=(%u,%u) -> lv=(%u,%u) pressed=%d points=%u strength0=%u rot=%u\n",
+                    rx, ry, lx, ly, (int)pressed, count, strength, s_rot);
       last = now;
     }
   }
@@ -141,7 +143,10 @@ bool touch_init_and_register(lv_disp_t* disp) {
 
   // Vendor init
   Serial.printf("[touch] begin(sda=%d scl=%d rst=%d int=%d)\n", TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
-  s_touch.begin();
+  if (!s_touch.begin()) {
+    Serial.println("[touch] ERROR: begin() failed; touch will be disabled");
+    return false;
+  }
 
   // Start with the panel's natural orientation. Adjust in setup() if required.
   touch_set_rotation(0);

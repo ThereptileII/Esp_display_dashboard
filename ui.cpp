@@ -108,7 +108,7 @@ static void apply_styles()
 
     lv_style_init(&st_label);
     lv_style_set_text_color(&st_label, COL_TXT);
-    lv_style_set_text_font(&st_label, FONT_MD);
+    lv_style_set_text_font(&st_label, FONT_SM);
 }
 
 static void build_status_bar(lv_obj_t* parent, lv_coord_t w)
@@ -117,7 +117,7 @@ static void build_status_bar(lv_obj_t* parent, lv_coord_t w)
     lv_obj_remove_style_all(cont_status);
     lv_obj_add_style(cont_status, &st_statusbar, 0);
     lv_obj_set_width(cont_status, w);
-    lv_obj_set_height(cont_status, 56);
+    lv_obj_set_height(cont_status, 48);
     lv_obj_align(cont_status, LV_ALIGN_TOP_MID, 0, 0);
 
     lv_obj_t* lbl_title = lv_label_create(cont_status);
@@ -138,7 +138,7 @@ static void build_footer(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_remove_style_all(cont_footer);
     lv_obj_add_style(cont_footer, &st_footer, 0);
     lv_obj_set_width(cont_footer, w);
-    lv_obj_set_height(cont_footer, 56);
+    lv_obj_set_height(cont_footer, 48);
     lv_obj_align(cont_footer, LV_ALIGN_BOTTOM_MID, 0, 0);
 
     lv_obj_t* lbl = lv_label_create(cont_footer);
@@ -149,8 +149,8 @@ static void build_footer(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
 
 static void build_grid(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
 {
-    const lv_coord_t top_h = 56;
-    const lv_coord_t bot_h = 56;
+    const lv_coord_t top_h = 48;
+    const lv_coord_t bot_h = 48;
     const lv_coord_t grid_w = w - 24;
     const lv_coord_t grid_h = h - (top_h + bot_h) - 24;
 

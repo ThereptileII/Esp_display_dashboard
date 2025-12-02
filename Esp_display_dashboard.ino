@@ -6,7 +6,13 @@ static uint32_t s_last_ms = 0;
 
 void setup() {
   Serial.begin(115200);
-  delay(100);
+  Serial.setDebugOutput(true);
+  uint32_t t0 = millis();
+  while (!Serial && (millis() - t0 < 1500)) {
+    delay(10);
+  }
+  Serial.println();
+  Serial.println(F("[boot] === ESP Dashboard bring-up ==="));
 
   if (!dbg_display_init()) return;  // sets up panel + LVGL + flush
   dbg_dump_env();
