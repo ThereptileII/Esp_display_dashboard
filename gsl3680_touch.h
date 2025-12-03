@@ -17,6 +17,7 @@ public:
      * Optionally returns the touch count and first point strength when provided.
      */
     bool getTouch(uint16_t *x, uint16_t *y, uint8_t *count_out = nullptr, uint16_t *strength_out = nullptr);
+    void set_verbose(bool v);
     void set_rotation(uint8_t r);
 
 private:
