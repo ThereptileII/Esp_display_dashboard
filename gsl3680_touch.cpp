@@ -55,11 +55,11 @@ bool gsl3680_touch::begin()
 
         esp_err_t err = i2c_new_master_bus(&bus_cfg, &s_i2c_bus);
         if (err == ESP_ERR_INVALID_STATE) {
-            Serial.println("[gsl3680] I2C bus already created");
-            err = ESP_OK;
+            Serial.println("[gsl3680] I2C bus already created; reusing");
+            err = i2c_master_bus_get_handle(bus_cfg.i2c_port, &s_i2c_bus);
         }
-        if (err != ESP_OK) {
-            Serial.printf("[gsl3680] ERROR: i2c_new_master_bus failed: %s\n", esp_err_to_name(err));
+        if (err != ESP_OK || !s_i2c_bus) {
+            Serial.printf("[gsl3680] ERROR: i2c master bus unavailable: %s\n", esp_err_to_name(err));
             return false;
         }
         Serial.println("[gsl3680] master bus ready");
