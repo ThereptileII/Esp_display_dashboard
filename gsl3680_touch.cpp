@@ -92,7 +92,8 @@ bool gsl3680_touch::begin()
         .x_max = CONFIG_LCD_HRES,
         .y_max = CONFIG_LCD_VRES,
         .rst_gpio_num = (gpio_num_t)_rst,
-        .int_gpio_num = (gpio_num_t)_int,
+        // Force polling mode for now by ignoring the INT line.
+        .int_gpio_num = GPIO_NUM_NC,
         .levels = {
             .reset = 0,
             .interrupt = 0,
@@ -103,6 +104,9 @@ bool gsl3680_touch::begin()
             .mirror_y = 0,
         },
     };
+
+    Serial.printf("[gsl3680] INT pin configured as %d; polling %s\n", (int)tp_cfg.int_gpio_num,
+                  tp_cfg.int_gpio_num == GPIO_NUM_NC ? "ENABLED" : "disabled");
 
     ESP_LOGI(TAG, "Initialize touch controller gsl3680");
     err = esp_lcd_touch_new_i2c_gsl3680(tp_io_handle, &tp_cfg, &tp);
