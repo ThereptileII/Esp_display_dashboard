@@ -321,6 +321,11 @@ static esp_err_t esp_lcd_touch_gsl3680_read_data(esp_lcd_touch_handle_t tp)
     memset(XY_Coordinate,0,sizeof(XY_Coordinate));
 
     err = touch_gsl3680_i2c_read(tp, ESP_LCD_TOUCH_GSL3680_READ_XY_REG, touch_data, 24);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "read_xy failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
     Finger_num = touch_data[0];
     // ESP_LOGI(TAG,"0x80 = %d",touch_data[0]);
 

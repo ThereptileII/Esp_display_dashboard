@@ -127,6 +127,13 @@ bool gsl3680_touch::getTouch(uint16_t *x, uint16_t *y, uint8_t *count_out, uint1
     }
 
     bool touchpad_pressed = esp_lcd_touch_get_coordinates(tp, x, y, touch_strength, &touch_cnt, 1);
+    static bool last_pressed = false;
+    if (touchpad_pressed || last_pressed != touchpad_pressed) {
+        Serial.printf("[gsl3680] polled: pressed=%d count=%u raw=(%u,%u) strength0=%u\n",
+                      (int)touchpad_pressed, touch_cnt, *x, *y,
+                      touch_cnt ? touch_strength[0] : 0);
+        last_pressed = touchpad_pressed;
+    }
 
     if (count_out) *count_out = touch_cnt;
     if (strength_out) *strength_out = touch_cnt ? touch_strength[0] : 0;
