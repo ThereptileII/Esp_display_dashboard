@@ -41,28 +41,34 @@ bool gsl3680_touch::begin()
         return false;
     }
 
-    if (s_i2c_bus) {
-        i2c_del_master_bus(s_i2c_bus);
-        s_i2c_bus = nullptr;
+    if (!s_i2c_bus) {
+        i2c_master_bus_config_t bus_cfg = {
+            .i2c_port = I2C_NUM_0,
+            .sda_io_num = (gpio_num_t)_sda,
+            .scl_io_num = (gpio_num_t)_scl,
+            .clk_source = I2C_CLK_SRC_DEFAULT,
+            .glitch_ignore_cnt = 7,
+            .flags = {
+                .enable_internal_pullup = true,
+            },
+        };
+
+        esp_err_t err = i2c_new_master_bus(&bus_cfg, &s_i2c_bus);
+        if (err == ESP_ERR_INVALID_STATE) {
+            Serial.println("[gsl3680] I2C bus already created");
+            err = ESP_OK;
+        }
+        if (err != ESP_OK) {
+            Serial.printf("[gsl3680] ERROR: i2c_new_master_bus failed: %s\n", esp_err_to_name(err));
+            return false;
+        }
+        Serial.println("[gsl3680] master bus ready");
+    } else {
+        Serial.println("[gsl3680] reusing master bus");
     }
 
-    i2c_master_bus_config_t bus_cfg = {
-        .i2c_port = I2C_NUM_0,
-        .sda_io_num = (gpio_num_t)_sda,
-        .scl_io_num = (gpio_num_t)_scl,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,
-        .flags = {
-            .enable_internal_pullup = true,
-        },
-    };
-
-    esp_err_t err = i2c_new_master_bus(&bus_cfg, &s_i2c_bus);
-    if (err != ESP_OK) {
-        Serial.printf("[gsl3680] ERROR: i2c_new_master_bus failed: %s\n", esp_err_to_name(err));
-        return false;
-    }
-    Serial.println("[gsl3680] master bus ready");
+    const gpio_num_t rst_gpio = (_rst >= 0) ? (gpio_num_t)_rst : GPIO_NUM_NC;
+    const gpio_num_t int_gpio = (_int >= 0) ? (gpio_num_t)_int : GPIO_NUM_NC;
 
     esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_GSL3680_CONFIG();
     // The Arduino 3.x core ships the ESP-IDF v5 panel IO v2 helper, which expects
@@ -71,7 +77,7 @@ bool gsl3680_touch::begin()
     // esp_lcd_new_panel_io_i2c() calls i2c_master_bus_add_device().
     tp_io_config.scl_speed_hz = 400000;
     ESP_LOGI(TAG, "Initialize touch IO (I2C)");
-    err = esp_lcd_new_panel_io_i2c(s_i2c_bus, &tp_io_config, &tp_io_handle);
+    esp_err_t err = esp_lcd_new_panel_io_i2c(s_i2c_bus, &tp_io_config, &tp_io_handle);
     if (err != ESP_OK) {
         Serial.printf("[gsl3680] ERROR: new_panel_io_i2c failed: %s\n", esp_err_to_name(err));
         return false;
@@ -80,9 +86,11 @@ bool gsl3680_touch::begin()
     esp_lcd_touch_config_t tp_cfg = {
         .x_max = CONFIG_LCD_HRES,
         .y_max = CONFIG_LCD_VRES,
-        .rst_gpio_num = (gpio_num_t)_rst,
-        // Force polling mode for now by ignoring the INT line.
-        .int_gpio_num = GPIO_NUM_NC,
+        .rst_gpio_num = rst_gpio,
+        // Prefer the dedicated INT line when available so the driver can
+        // properly select the I2C address and configure interrupts. Fall back
+        // to polling only if the pin is unavailable.
+        .int_gpio_num = int_gpio,
         .levels = {
             .reset = 0,
             .interrupt = 0,
@@ -94,7 +102,7 @@ bool gsl3680_touch::begin()
         },
     };
 
-    Serial.printf("[gsl3680] INT pin configured as %d; polling %s\n", (int)tp_cfg.int_gpio_num,
+    Serial.printf("[gsl3680] RST=%d INT=%d; polling %s\n", (int)tp_cfg.rst_gpio_num, (int)tp_cfg.int_gpio_num,
                   tp_cfg.int_gpio_num == GPIO_NUM_NC ? "ENABLED" : "disabled");
 
     ESP_LOGI(TAG, "Initialize touch controller gsl3680");
