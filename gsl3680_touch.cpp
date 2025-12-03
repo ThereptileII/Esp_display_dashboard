@@ -20,6 +20,10 @@ static bool        s_verbose = false;
 static esp_lcd_touch_handle_t    tp            = nullptr;
 static esp_lcd_panel_io_handle_t tp_io_handle  = nullptr;
 static i2c_master_bus_handle_t   s_i2c_bus     = nullptr;
+static int8_t                    s_bus_sda     = -1;
+static int8_t                    s_bus_scl     = -1;
+static int8_t                    s_rst_pin     = -1;
+static int8_t                    s_int_pin     = -1;
 
 uint16_t touch_strength[5];
 uint8_t touch_cnt = 0;
@@ -36,7 +40,16 @@ bool gsl3680_touch::begin()
 {
     Serial.printf("[gsl3680] begin(sda=%d scl=%d rst=%d int=%d)\n", _sda, _scl, _rst, _int);
 
+    // If we already have a driver instance, make sure the requested pins
+    // match the configuration that created it; otherwise, bail to avoid
+    // reusing handles on mismatched wiring.
     if (tp) {
+        const bool pins_match = (_sda == s_bus_sda) && (_scl == s_bus_scl) && (_rst == s_rst_pin) && (_int == s_int_pin);
+        if (!pins_match) {
+            Serial.printf("[gsl3680] ERROR: begin() called with different pins (current sda=%d scl=%d rst=%d int=%d)\n",
+                          s_bus_sda, s_bus_scl, s_rst_pin, s_int_pin);
+            return false;
+        }
         Serial.println("[gsl3680] already initialized; reusing existing driver");
         return true;
     }
@@ -68,7 +81,14 @@ bool gsl3680_touch::begin()
             return false;
         }
         Serial.println("[gsl3680] master bus ready");
+        s_bus_sda = _sda;
+        s_bus_scl = _scl;
     } else {
+        const bool bus_match = (_sda == s_bus_sda) && (_scl == s_bus_scl);
+        if (!bus_match) {
+            Serial.printf("[gsl3680] ERROR: bus already in use with different pins (sda=%d scl=%d)\n", s_bus_sda, s_bus_scl);
+            return false;
+        }
         Serial.println("[gsl3680] reusing master bus");
     }
 
@@ -121,6 +141,8 @@ bool gsl3680_touch::begin()
             Serial.printf("[gsl3680] ERROR: touch_new_i2c_gsl3680 failed: %s\n", esp_err_to_name(err));
             return false;
         }
+        s_rst_pin = _rst;
+        s_int_pin = _int;
     }
 
     Serial.println("[gsl3680] init OK");
@@ -215,7 +237,8 @@ bool gsl3680_touch::getTouch(uint16_t *x, uint16_t *y, uint8_t *count_out, uint1
     return touchpad_pressed;
 }
 
-void gsl3680_touch::set_rotation(uint8_t r) {
+void gsl3680_touch::set_rotation(uint8_t r)
+{
     if (!tp) {
         Serial.println("[gsl3680] WARN: set_rotation called before init");
         return;
