@@ -95,6 +95,13 @@ static void touch_read_cb(lv_indev_drv_t* indev, lv_indev_data_t* data) {
   uint16_t strength = 0;
   bool pressed = s_touch.getTouch(&rx, &ry, &count, &strength);  // vendor API: returns true while touching
 
+  // The vendor sample in README shows `touchX = 800 - touchX` to compensate for
+  // the sensor's mirrored X axis. Keep that quirk here so LVGL receives
+  // coordinates that match the panel's portrait orientation.
+  if (s_w) {
+    rx = (s_w - 1) - rx;
+  }
+
   // Clamp to LVGL logical bounds (s_touch already applies rotation internally)
   uint16_t lx = rx, ly = ry;
   if (lx >= s_w) lx = s_w ? (s_w - 1) : 0;
