@@ -9,17 +9,19 @@
 #include "esp_lcd_gsl3680.h"
 #include "gsl3680_touch.h"
 #include <Arduino.h>
+#include <cstring>
 
 #define CONFIG_LCD_HRES 800
 #define CONFIG_LCD_VRES 1280
 
 static const char *TAG = "gsl3680";
+static bool        s_verbose = false;
 
 esp_lcd_touch_handle_t tp;
 esp_lcd_panel_io_handle_t tp_io_handle;
 static i2c_master_bus_handle_t s_i2c_bus = nullptr;
 
-uint16_t touch_strength[1];
+uint16_t touch_strength[5];
 uint8_t touch_cnt = 0;
 
 gsl3680_touch::gsl3680_touch(int8_t sda_pin, int8_t scl_pin, int8_t rst_pin, int8_t int_pin)
@@ -106,12 +108,18 @@ bool gsl3680_touch::begin()
     return true;
 }
 
+void gsl3680_touch::set_verbose(bool v) { s_verbose = v; }
+
 bool gsl3680_touch::getTouch(uint16_t *x, uint16_t *y, uint8_t *count_out, uint16_t *strength_out)
 {
     if (!x || !y) {
         Serial.println("[gsl3680] WARN: null coordinate pointers passed to getTouch");
         return false;
     }
+
+    *x = *y = 0;
+    touch_cnt = 0;
+    memset(touch_strength, 0, sizeof(touch_strength));
 
     if (!tp) {
         Serial.println("[gsl3680] ERROR: touch handle is null; begin() probably failed");
@@ -131,7 +139,32 @@ bool gsl3680_touch::getTouch(uint16_t *x, uint16_t *y, uint8_t *count_out, uint1
         return false;
     }
 
-    bool touchpad_pressed = esp_lcd_touch_get_coordinates(tp, x, y, touch_strength, &touch_cnt, 1);
+    uint16_t x_buf[5]         = {0};
+    uint16_t y_buf[5]         = {0};
+    uint16_t strength_buf[5]  = {0};
+    uint8_t  coord_count      = 0;
+    bool     touchpad_pressed = esp_lcd_touch_get_coordinates(tp, x_buf, y_buf, strength_buf, &coord_count, 5);
+    touch_cnt                 = coord_count;
+    if (touch_cnt > 0) {
+        *x               = x_buf[0];
+        *y               = y_buf[0];
+        touch_strength[0] = strength_buf[0];
+    }
+
+    if (s_verbose) {
+        Serial.printf("[gsl3680] helper pressed=%d count=%u raw_points=[", (int)touchpad_pressed, touch_cnt);
+        for (uint8_t i = 0; i < touch_cnt && i < 5; ++i) {
+            Serial.printf("(%u,%u s=%u)%s", x_buf[i], y_buf[i], strength_buf[i],
+                          (i + 1 < touch_cnt && i + 1 < 5) ? ", " : "");
+        }
+        Serial.println("]");
+
+        if (touch_cnt > 0) {
+            bool in_range = (x_buf[0] < CONFIG_LCD_HRES) && (y_buf[0] < CONFIG_LCD_VRES);
+            Serial.printf("[gsl3680] raw[0] before rotation: (%u,%u) max=(%u,%u)%s\n", x_buf[0], y_buf[0],
+                          CONFIG_LCD_HRES - 1, CONFIG_LCD_VRES - 1, in_range ? "" : " OUT_OF_RANGE");
+        }
+    }
 
     // If the esp_lcd helper returns no points, fall back to a direct register read so we
     // can still surface events even if the algorithm path fails to populate XY_Coordinate.

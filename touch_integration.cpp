@@ -63,7 +63,10 @@ static lv_obj_t*     s_touch_dot = nullptr;
 // Construct with required pins (your header shows this ctor signature)
 static gsl3680_touch s_touch(TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
 
-void touch_set_verbose(bool v) { s_verbose = v; }
+void touch_set_verbose(bool v) {
+  s_verbose = v;
+  s_touch.set_verbose(v);
+}
 
 void touch_set_rotation(uint8_t r) {
   s_rot = (r & 3);
@@ -154,6 +157,8 @@ bool touch_init_and_register(lv_disp_t* disp) {
     Serial.println("[touch] ERROR: begin() failed; touch will be disabled");
     return false;
   }
+
+  s_touch.set_verbose(s_verbose);
 
   // Start with the panel's natural orientation. Adjust in setup() if required.
   touch_set_rotation(0);
