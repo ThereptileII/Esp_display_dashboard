@@ -62,6 +62,11 @@ bool gsl3680_touch::begin()
     Serial.println("[gsl3680] master bus ready");
 
     esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_GSL3680_CONFIG();
+    // The Arduino 3.x core ships the ESP-IDF v5 panel IO v2 helper, which expects
+    // the I2C device config to carry a sane clock. The default from the macro is
+    // zero, so explicitly request 400 kHz to avoid "invalid scl frequency" when
+    // esp_lcd_new_panel_io_i2c() calls i2c_master_bus_add_device().
+    tp_io_config.scl_speed_hz = 400000;
     ESP_LOGI(TAG, "Initialize touch IO (I2C)");
     err = esp_lcd_new_panel_io_i2c(s_i2c_bus, &tp_io_config, &tp_io_handle);
     if (err != ESP_OK) {
