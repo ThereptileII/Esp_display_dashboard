@@ -17,9 +17,9 @@
 static const char *TAG = "gsl3680";
 static bool        s_verbose = false;
 
-esp_lcd_touch_handle_t tp;
-esp_lcd_panel_io_handle_t tp_io_handle;
-static i2c_master_bus_handle_t s_i2c_bus = nullptr;
+static esp_lcd_touch_handle_t    tp            = nullptr;
+static esp_lcd_panel_io_handle_t tp_io_handle  = nullptr;
+static i2c_master_bus_handle_t   s_i2c_bus     = nullptr;
 
 uint16_t touch_strength[5];
 uint8_t touch_cnt = 0;
@@ -35,6 +35,11 @@ gsl3680_touch::gsl3680_touch(int8_t sda_pin, int8_t scl_pin, int8_t rst_pin, int
 bool gsl3680_touch::begin()
 {
     Serial.printf("[gsl3680] begin(sda=%d scl=%d rst=%d int=%d)\n", _sda, _scl, _rst, _int);
+
+    if (tp) {
+        Serial.println("[gsl3680] already initialized; reusing existing driver");
+        return true;
+    }
 
     if (_sda < 0 || _scl < 0) {
         Serial.println("[gsl3680] ERROR: SDA/SCL pins not set");
@@ -70,17 +75,21 @@ bool gsl3680_touch::begin()
     const gpio_num_t rst_gpio = (_rst >= 0) ? (gpio_num_t)_rst : GPIO_NUM_NC;
     const gpio_num_t int_gpio = (_int >= 0) ? (gpio_num_t)_int : GPIO_NUM_NC;
 
-    esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_GSL3680_CONFIG();
-    // The Arduino 3.x core ships the ESP-IDF v5 panel IO v2 helper, which expects
-    // the I2C device config to carry a sane clock. The default from the macro is
-    // zero, so explicitly request 400 kHz to avoid "invalid scl frequency" when
-    // esp_lcd_new_panel_io_i2c() calls i2c_master_bus_add_device().
-    tp_io_config.scl_speed_hz = 400000;
-    ESP_LOGI(TAG, "Initialize touch IO (I2C)");
-    esp_err_t err = esp_lcd_new_panel_io_i2c(s_i2c_bus, &tp_io_config, &tp_io_handle);
-    if (err != ESP_OK) {
-        Serial.printf("[gsl3680] ERROR: new_panel_io_i2c failed: %s\n", esp_err_to_name(err));
-        return false;
+    if (!tp_io_handle) {
+        esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_GSL3680_CONFIG();
+        // The Arduino 3.x core ships the ESP-IDF v5 panel IO v2 helper, which expects
+        // the I2C device config to carry a sane clock. The default from the macro is
+        // zero, so explicitly request 400 kHz to avoid "invalid scl frequency" when
+        // esp_lcd_new_panel_io_i2c() calls i2c_master_bus_add_device().
+        tp_io_config.scl_speed_hz = 400000;
+        ESP_LOGI(TAG, "Initialize touch IO (I2C)");
+        esp_err_t err = esp_lcd_new_panel_io_i2c(s_i2c_bus, &tp_io_config, &tp_io_handle);
+        if (err != ESP_OK) {
+            Serial.printf("[gsl3680] ERROR: new_panel_io_i2c failed: %s\n", esp_err_to_name(err));
+            return false;
+        }
+    } else {
+        Serial.println("[gsl3680] reusing touch IO handle");
     }
 
     esp_lcd_touch_config_t tp_cfg = {
@@ -105,11 +114,13 @@ bool gsl3680_touch::begin()
     Serial.printf("[gsl3680] RST=%d INT=%d; polling %s\n", (int)tp_cfg.rst_gpio_num, (int)tp_cfg.int_gpio_num,
                   tp_cfg.int_gpio_num == GPIO_NUM_NC ? "ENABLED" : "disabled");
 
-    ESP_LOGI(TAG, "Initialize touch controller gsl3680");
-    err = esp_lcd_touch_new_i2c_gsl3680(tp_io_handle, &tp_cfg, &tp);
-    if (err != ESP_OK) {
-        Serial.printf("[gsl3680] ERROR: touch_new_i2c_gsl3680 failed: %s\n", esp_err_to_name(err));
-        return false;
+    if (!tp) {
+        ESP_LOGI(TAG, "Initialize touch controller gsl3680");
+        esp_err_t err = esp_lcd_touch_new_i2c_gsl3680(tp_io_handle, &tp_cfg, &tp);
+        if (err != ESP_OK) {
+            Serial.printf("[gsl3680] ERROR: touch_new_i2c_gsl3680 failed: %s\n", esp_err_to_name(err));
+            return false;
+        }
     }
 
     Serial.println("[gsl3680] init OK");
