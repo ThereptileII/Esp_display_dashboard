@@ -72,7 +72,7 @@ esp_err_t esp_lcd_new_panel_jd9365(const esp_lcd_panel_io_handle_t io, const esp
         .bus_id = 0,                                     \
         .num_data_lanes = 2,                             \
         .phy_clk_src = MIPI_DSI_PHY_CLK_SRC_DEFAULT,     \
-        .lane_bit_rate_mbps = 1500,                      \
+        .lane_bit_rate_mbps = 2000,                      \
     }
 
 /**
@@ -99,19 +99,19 @@ esp_err_t esp_lcd_new_panel_jd9365(const esp_lcd_panel_io_handle_t io, const esp
     {							\
     	.virtual_channel = 0,                            \
         .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,     \
-        /* 70 MHz pixel clock yields ~61 Hz with current porch timings */ \
-        .dpi_clock_freq_mhz = 70,                        \
+        /* Faster pixel clock to raise refresh ceiling; adjust if panel can't hold lock */ \
+        .dpi_clock_freq_mhz = 90,                        \
         .pixel_format = px_format,                       \
         .num_fbs = 1,                                    \
         .video_timing = {                                \
             .h_size = 800,                               \
             .v_size = 1280,                              \
-            .hsync_pulse_width = 20,   \
-            .hsync_back_porch = 20,                  \
-            .hsync_front_porch = 40,                     \
-            .vsync_pulse_width = 4,  				\
-            .vsync_back_porch = 8,                       \
-            .vsync_front_porch = 20,                     \
+            .hsync_pulse_width = 10,                     \
+            .hsync_back_porch = 10,                      \
+            .hsync_front_porch = 20,                     \
+            .vsync_pulse_width = 2,                      \
+            .vsync_back_porch = 6,                       \
+            .vsync_front_porch = 14,                     \
         },                                               \
         .flags ={					\
         	.use_dma2d = true,			\
