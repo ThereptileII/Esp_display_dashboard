@@ -327,6 +327,10 @@ static esp_err_t esp_lcd_touch_gsl3680_read_data(esp_lcd_touch_handle_t tp)
     }
 
     Finger_num = touch_data[0];
+    if (Finger_num > MAX_FINGER_NUM) {
+        ESP_LOGW(TAG, "finger count %u exceeds max %u; clamping", Finger_num, MAX_FINGER_NUM);
+        Finger_num = MAX_FINGER_NUM;
+    }
     // ESP_LOGI(TAG,"0x80 = %d",touch_data[0]);
 
     x_poit = ((touch_data[7]&0x0f)<<8 )|touch_data[6];
@@ -443,16 +447,24 @@ static bool esp_lcd_touch_gsl3680_get_xy(esp_lcd_touch_handle_t tp, uint16_t *x,
 
     portENTER_CRITICAL(&tp->data.lock);
 
-    *point_num = Finger_num;
-    x[0] = XY_Coordinate[0].x_position;
-    y[0] = XY_Coordinate[0].y_position;
+    uint8_t safe_points = Finger_num;
+    if (safe_points > MAX_FINGER_NUM) {
+        safe_points = MAX_FINGER_NUM;
+    }
+    if (safe_points > max_point_num) {
+        safe_points = max_point_num;
+    }
 
-    if(Finger_num > 1)
-    {
-        for(int i=1;i<Finger_num;i++)
-        {
-            x[i-1] = XY_Coordinate[i].x_position;
-            y[i-1] = XY_Coordinate[i].y_position;
+    *point_num = safe_points;
+    if (safe_points > 0) {
+        x[0] = XY_Coordinate[0].x_position;
+        y[0] = XY_Coordinate[0].y_position;
+    }
+
+    if (safe_points > 1) {
+        for (int i = 1; i < safe_points; i++) {
+            x[i - 1] = XY_Coordinate[i].x_position;
+            y[i - 1] = XY_Coordinate[i].y_position;
             // strength[i] = XY_Coordinate[i].finger_id;
         }
     }
