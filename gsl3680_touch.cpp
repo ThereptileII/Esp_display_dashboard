@@ -140,6 +140,10 @@ bool gsl3680_touch::getTouch(uint16_t *x, uint16_t *y, uint8_t *count_out, uint1
             last_err_ms = now;
         }
         *x = *y = 0;
+        // Stay passive until the driver reports a clean read again. The most common
+        // crash we saw was a load access fault in the vendor driver when the I2C
+        // layer returned invalid state; skipping the fallback raw-register read
+        // keeps us off the bus while it recovers.
         return false;
     }
 
@@ -173,21 +177,11 @@ bool gsl3680_touch::getTouch(uint16_t *x, uint16_t *y, uint8_t *count_out, uint1
         }
     }
 
-    // If the esp_lcd helper returns no points, fall back to a direct register read so we
-    // can still surface events even if the algorithm path fails to populate XY_Coordinate.
-    if (!touchpad_pressed) {
-        uint8_t raw[24] = {0};
-        err = esp_lcd_panel_io_rx_param(tp_io_handle, 0x80, raw, sizeof(raw));
-        if (err == ESP_OK && raw[0] > 0) {
-            touchpad_pressed = true;
-            touch_cnt        = raw[0];
-            *x = (uint16_t)(((raw[7] & 0x0F) << 8) | raw[6]);
-            *y = (uint16_t)((raw[5] << 8) | raw[4]);
-            touch_strength[0] = raw[3];
-            Serial.printf("[gsl3680] fallback raw count=%u xy=(%u,%u) strength=%u\n",
-                          touch_cnt, *x, *y, touch_strength[0]);
-        }
-    }
+    // Avoid the raw-register fallback when the helper reports no coordinates. The
+    // panel IO is already exercised inside esp_lcd_touch_read_data() and repeated
+    // low-level reads risk hitting the I2C driver while it is in an error state,
+    // which has been observed to trigger load access faults. If the firmware ever
+    // needs this path again we can reintroduce it with tighter error gating.
 
     static bool last_pressed = false;
     if (touchpad_pressed || last_pressed != touchpad_pressed) {
