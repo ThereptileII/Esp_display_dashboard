@@ -127,7 +127,8 @@ static void build_status_bar(lv_obj_t* parent, lv_coord_t w)
 
     lv_obj_t* lbl_conn = lv_label_create(cont_status);
     lv_obj_add_style(lbl_conn, &st_label, 0);
-    lv_label_set_text(lbl_conn, "CAN: OK  •  GPS: 3D  •  LOG: SD");
+    // Avoid glyphs that may not exist in limited custom fonts (e.g. bullet U+2022)
+    lv_label_set_text(lbl_conn, "CAN: OK  |  GPS: 3D  |  LOG: SD");
     lv_obj_align(lbl_conn, LV_ALIGN_RIGHT_MID, 0, 0);
 }
 
@@ -143,7 +144,8 @@ static void build_footer(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
 
     lv_obj_t* lbl = lv_label_create(cont_footer);
     lv_obj_add_style(lbl, &st_label, 0);
-    lv_label_set_text(lbl, "▲ Swipe for details  |  Long-press: settings");
+    // Replace characters missing from custom font (e.g. U+25B2) with ASCII fallbacks
+    lv_label_set_text(lbl, "^ Swipe for details  |  Long-press: settings");
     lv_obj_align(lbl, LV_ALIGN_CENTER, 0, 0);
 }
 
@@ -198,7 +200,8 @@ static void build_grid(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     // Small badge on speed card
     lv_obj_t* badge = lv_label_create(c_speed);
     lv_obj_add_style(badge, &st_title, 0);
-    lv_label_set_text(badge, "⚠ NO ALARMS");
+    // Avoid symbol characters that may be absent from the font (e.g. U+26A0)
+    lv_label_set_text(badge, "NO ALARMS");
     lv_obj_set_style_text_color(badge, COL_GREEN, 0);
     lv_obj_align(badge, LV_ALIGN_BOTTOM_RIGHT, -12, -10);
 }

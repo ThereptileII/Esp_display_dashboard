@@ -142,14 +142,29 @@ bool dbg_display_init(void) {
   s_buf1 = (lv_color_t*)heap_caps_malloc(LOGICAL_W * buf_lines * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
   s_buf2 = (lv_color_t*)heap_caps_malloc(LOGICAL_W * buf_lines * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
 
+  // DMA bounce buffer must exist (internal RAM). Retry with smaller stripes if needed.
   s_bounce = (uint16_t*)heap_caps_malloc(PANEL_W * s_stripe_lines * sizeof(uint16_t),
                                          MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  if (!s_buf1 || !s_buf2 || !s_bounce) {
-    // Try smaller stripes
-    if (s_bounce) { free(s_bounce); s_bounce = nullptr; }
+  if (!s_bounce) {
     s_stripe_lines = 60;
     s_bounce = (uint16_t*)heap_caps_malloc(PANEL_W * s_stripe_lines * sizeof(uint16_t),
                                            MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  }
+
+  // Bail out early if the bounce buffer cannot be allocated; proceeding would fault in my_flush.
+  if (!s_bounce) {
+    Serial.println(F("[alloc][FATAL] bounce buffer allocation failed"));
+    if (s_buf1) { free(s_buf1); s_buf1 = nullptr; }
+    if (s_buf2) { free(s_buf2); s_buf2 = nullptr; }
+    return false;
+  }
+
+  // LVGL requires at least one draw buffer.
+  if (!s_buf1) {
+    Serial.println(F("[alloc][FATAL] LVGL draw buffer #1 allocation failed"));
+    if (s_buf2) { free(s_buf2); s_buf2 = nullptr; }
+    free(s_bounce); s_bounce = nullptr;
+    return false;
   }
 
   size_t int_free  = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
@@ -158,15 +173,20 @@ bool dbg_display_init(void) {
   size_t dma_big   = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
   size_t psram_free= heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
 
-  if (s_buf1 && s_buf2 && s_bounce) {
-    Serial.printf("[alloc] LVGL PSRAM buffers OK: %d bytes each, bounce=%d bytes\n",
-                  LOGICAL_W * buf_lines * (int)sizeof(lv_color_t),
-                  PANEL_W * s_stripe_lines * (int)sizeof(uint16_t));
+  const int buf_bytes = LOGICAL_W * buf_lines * (int)sizeof(lv_color_t);
+  if (s_buf1) {
+    Serial.printf("[alloc] LVGL PSRAM buffer #1 OK: %d bytes\n", buf_bytes);
   }
+  if (s_buf2) {
+    Serial.printf("[alloc] LVGL PSRAM buffer #2 OK: %d bytes\n", buf_bytes);
+  }
+  Serial.printf("[alloc] bounce buffer OK: %d bytes (stripe_lines=%d)\n",
+                PANEL_W * s_stripe_lines * (int)sizeof(uint16_t), s_stripe_lines);
   Serial.printf("[mem][post-alloc] INT free=%u big=%u | DMA free=%u big=%u | PSRAM free=%u\n",
                 (unsigned)int_free, (unsigned)int_big, (unsigned)dma_free, (unsigned)dma_big, (unsigned)psram_free);
 
-  lv_disp_draw_buf_init(&s_draw, s_buf1, s_buf2, LOGICAL_W * buf_lines);
+  // If the second buffer failed, fall back to single-buffer mode (LVGL handles this gracefully).
+  lv_disp_draw_buf_init(&s_draw, s_buf1, s_buf2 ? s_buf2 : nullptr, LOGICAL_W * buf_lines);
 
   static lv_disp_drv_t drv;
   lv_disp_drv_init(&drv);
@@ -183,7 +203,7 @@ bool dbg_display_init(void) {
 // ============ LVGL flush (no rotation, portrait native) ============
 static void my_flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* color_p) {
   (void)drv;
-  if (!panel_handle) { lv_disp_flush_ready(drv); return; }
+  if (!panel_handle || !s_bounce) { lv_disp_flush_ready(drv); return; }
 
   int x1 = a->x1, y1 = a->y1, x2 = a->x2, y2 = a->y2;
   if (x2 < x1 || y2 < y1) { lv_disp_flush_ready(drv); return; }
