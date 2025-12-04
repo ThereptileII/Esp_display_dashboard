@@ -5,12 +5,10 @@
 // ---------- Font selection (no external fonts required) ----------
 #if defined(USE_ORBITRON) || defined(USE_ORBITRON_FONTS)
 static const lv_font_t* FONT_SM = &orbitron_20_700;
-static const lv_font_t* FONT_MD = &orbitron_32_800;
 static const lv_font_t* FONT_LG = &orbitron_48_900;
 #else
 // Safe defaults: use LVGL's default font for all sizes (always available)
 static const lv_font_t* FONT_SM = LV_FONT_DEFAULT;
-static const lv_font_t* FONT_MD = LV_FONT_DEFAULT;
 static const lv_font_t* FONT_LG = LV_FONT_DEFAULT;
 #endif
 
@@ -393,8 +391,6 @@ static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_chart_set_update_mode(chart_rpm, LV_CHART_UPDATE_MODE_CIRCULAR);
     lv_chart_set_axis_tick(chart_rpm, LV_CHART_AXIS_PRIMARY_X, 8, 4, 6, 2, true, 40);
     lv_chart_set_axis_tick(chart_rpm, LV_CHART_AXIS_PRIMARY_Y, 8, 4, 5, 2, true, 40);
-    lv_obj_set_style_grid_color(chart_rpm, lv_color_hex(0x1E2A32), 0);
-    lv_obj_set_style_grid_opa(chart_rpm, LV_OPA_60, 0);
     lv_obj_set_style_text_font(chart_rpm, FONT_SM, 0);
     lv_obj_set_style_text_color(chart_rpm, COL_MUTED, 0);
 
