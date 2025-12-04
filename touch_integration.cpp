@@ -60,13 +60,13 @@
 #endif
 
 // The glass on this build is flipped relative to LVGL’s native portrait
-// space, so invert both axes by default. You can override in pins_config.h if
-// your board is wired differently.
+// space, so invert X by default. You can override in pins_config.h if your
+// board is wired differently.
 #ifndef TOUCH_INVERT_X
-#  define TOUCH_INVERT_X 1
+  #  define TOUCH_INVERT_X 1
 #endif
 #ifndef TOUCH_INVERT_Y
-#  define TOUCH_INVERT_Y 1
+  #  define TOUCH_INVERT_Y 0
 #endif
 
 static bool          s_verbose   = true;
