@@ -59,21 +59,24 @@
 #  define TOUCH_DEFAULT_ROTATION 0
 #endif
 
-// The glass on this build is flipped relative to LVGL’s native portrait
-// space, so invert X by default. You can override in pins_config.h if your
-// board is wired differently.
+// The dashboard is rendered in landscape and rotated 90° CCW for the panel,
+// so map the touch matrix the same way (swap XY and mirror X). Override in
+// pins_config.h if your hardware is wired differently.
+#ifndef TOUCH_SWAP_XY
+#  define TOUCH_SWAP_XY 1
+#endif
 #ifndef TOUCH_INVERT_X
-  #  define TOUCH_INVERT_X 1
+#  define TOUCH_INVERT_X 1
 #endif
 #ifndef TOUCH_INVERT_Y
-  #  define TOUCH_INVERT_Y 0
+#  define TOUCH_INVERT_Y 0
 #endif
 
 static bool          s_verbose   = true;
 static lv_indev_t*   s_indev     = nullptr;
 static uint8_t       s_rot       = TOUCH_DEFAULT_ROTATION;
-static uint16_t      s_w         = 800;  // Updated at init from LVGL display
-static uint16_t      s_h         = 1280; // Updated at init from LVGL display
+static uint16_t      s_w         = 1280; // Updated at init from LVGL display
+static uint16_t      s_h         = 800;  // Updated at init from LVGL display
 static lv_disp_t*    s_disp      = nullptr;
 static lv_obj_t*     s_touch_dot = nullptr;
 

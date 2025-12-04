@@ -40,11 +40,12 @@ static lv_color_t* s_buf2         = nullptr;
 static uint16_t* s_bounce         = nullptr;
 static int       s_stripe_lines   = 120;      // LV rows per sub-flush
 
-// LVGL logical framebuffer matches the panel's native portrait orientation.
+// LVGL logical framebuffer is landscape (1280x800); panel is portrait
+// (800x1280). We rotate 90° counter-clockwise in the flush callback.
 static constexpr int PANEL_W      = 800;      // JD9365 native width (portrait)
 static constexpr int PANEL_H      = 1280;     // JD9365 native height (portrait)
-static constexpr int LOGICAL_W    = PANEL_W;  // LV canvas width
-static constexpr int LOGICAL_H    = PANEL_H;  // LV canvas height
+static constexpr int LOGICAL_W    = PANEL_H;  // LV canvas width (landscape)
+static constexpr int LOGICAL_H    = PANEL_W;  // LV canvas height (landscape)
 
 static void my_flush(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* color_p);
 
@@ -180,7 +181,7 @@ bool dbg_display_init(void) {
   return true;
 }
 
-// ============ LVGL flush (no rotation, portrait native) ============
+// ============ LVGL flush with 90° CCW rotation (landscape -> portrait) ============
 static void my_flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* color_p) {
   (void)drv;
   if (!panel_handle) { lv_disp_flush_ready(drv); return; }
@@ -188,8 +189,16 @@ static void my_flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* color_p
   int x1 = a->x1, y1 = a->y1, x2 = a->x2, y2 = a->y2;
   if (x2 < x1 || y2 < y1) { lv_disp_flush_ready(drv); return; }
 
-  const int dest_w = (x2 - x1 + 1);
-  const int dest_h = (y2 - y1 + 1);
+  const int src_w = (x2 - x1 + 1);  // LV logical width of the area
+  const int src_h = (y2 - y1 + 1);  // LV logical height of the area
+
+  // Rotate 90° CCW: (x, y) -> (y, LOGICAL_W - 1 - x)
+  const int dest_w = src_h;               // becomes panel width span
+  const int dest_h = src_w;               // becomes panel height span
+  const int xs     = a->y1;               // panel X start (derived from LV y)
+  const int xe     = a->y2 + 1;           // panel X end (exclusive)
+  const int ys     = LOGICAL_W - 1 - a->x2; // panel Y start (derived from LV x)
+  const int ye     = LOGICAL_W - a->x1;     // panel Y end (exclusive)
 
   const int rows_total = dest_h;
   const int rows_step  = s_stripe_lines > 0 ? s_stripe_lines : rows_total;
@@ -199,9 +208,7 @@ static void my_flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* color_p
   for (int row0 = 0; row0 < rows_total; row0 += rows_step) {
     const int rows = (row0 + rows_step <= rows_total) ? rows_step : (rows_total - row0);
 
-    const int xs = x1;
-    const int xe = x2 + 1;           // exclusive
-    const int Y1 = y1 + row0;
+    const int Y1 = ys + row0;
     const int Y2 = Y1 + rows;        // exclusive
 
     const int inner_w = dest_w;
@@ -209,16 +216,20 @@ static void my_flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* color_p
 
     uint16_t* dst = s_bounce;
     for (int j = 0; j < inner_h; ++j) {
-      const lv_color_t* src = color_p + (row0 + j) * dest_w;
+      // For a CCW rotation, each destination row maps to a decreasing LV x
+      // coordinate (src_x). src_y advances with dest_x.
+      const int src_x_offset = (src_w - 1) - (row0 + j);
       for (int i = 0; i < inner_w; ++i) {
-        *dst++ = src[i].full; // RGB565
+        const int src_y_offset = i;
+        const lv_color_t* src  = color_p + (src_y_offset * src_w + src_x_offset);
+        *dst++ = src->full; // RGB565
       }
     }
 
     msync_c2m(s_bounce, inner_w * inner_h * sizeof(uint16_t));
     Serial.printf("[flush] #%u LV a=(%d,%d)-(%d,%d) w=%d h=%d -> PANEL rect x=[%d..%d] y=[%d..%d] (dw=%d dh=%d)\n",
                   flush_count++,
-                  a->x1, a->y1, a->x2, a->y2, (a->x2 - a->x1 + 1), (a->y2 - a->y1 + 1),
+                  a->x1, a->y1, a->x2, a->y2, src_w, src_h,
                   xs, xe - 1, Y1, Y2 - 1, (xe - xs), (Y2 - Y1));
 
     (void) draw_bitmap_retry(xs, Y1, xe, Y2, s_bounce);
