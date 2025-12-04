@@ -52,11 +52,11 @@
 #endif
 // ----------------------------------------------------------------------
 
-// Portrait dashboards for this board have historically required a 90° swap/invert
-// combo (rotation=1 in the working snippet). Let users override via a macro but
-// keep the proven mapping by default.
+// Default to the native, non-rotated coordinate system (0). If your panel is
+// physically mounted differently, override TOUCH_DEFAULT_ROTATION in
+// pins_config.h (0..3) to match the display’s LVGL rotation.
 #ifndef TOUCH_DEFAULT_ROTATION
-#  define TOUCH_DEFAULT_ROTATION 1
+#  define TOUCH_DEFAULT_ROTATION 0
 #endif
 
 static bool          s_verbose   = true;
