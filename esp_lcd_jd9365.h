@@ -72,7 +72,13 @@ esp_err_t esp_lcd_new_panel_jd9365(const esp_lcd_panel_io_handle_t io, const esp
         .bus_id = 0,                                     \
         .num_data_lanes = 2,                             \
         .phy_clk_src = MIPI_DSI_PHY_CLK_SRC_DEFAULT,     \
-        .lane_bit_rate_mbps = 2000,                      \
+        /*
+         * Effective throughput requirement for 800x1280@60Hz RGB565 is
+         * around 720 Mbps per lane (90 MHz DPI clock * 16 bpp / 2 lanes).
+         * Set a conservative but valid bit rate that satisfies this
+         * requirement while staying within the SoC's supported range.
+         */
+        .lane_bit_rate_mbps = 1000,                      \
     }
 
 /**
