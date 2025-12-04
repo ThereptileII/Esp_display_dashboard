@@ -43,6 +43,13 @@ static lv_obj_t* lbl_axis_y = nullptr;
 // ---- Forward declarations ----
 static void show_rpm_detail(bool show);
 static void set_rpm_resolution(int idx);
+static lv_obj_t* make_chip_button(lv_obj_t* parent,
+                                 const char* text,
+                                 lv_event_cb_t cb,
+                                 void* user_data,
+                                 lv_style_t* base_style = &st_chip,
+                                 lv_style_t* checked_style = &st_chip_checked,
+                                 bool checkable = true);
 
 // ---- Page state (single page) ----
 static int s_current_page = 0; // 0 .. ui_page_count()-1
