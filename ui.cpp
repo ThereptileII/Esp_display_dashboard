@@ -337,9 +337,9 @@ static lv_obj_t* make_chip_button(lv_obj_t* parent,
                                  const char* text,
                                  lv_event_cb_t cb,
                                  void* user_data,
-                                 lv_style_t* base_style = &st_chip,
-                                 lv_style_t* checked_style = &st_chip_checked,
-                                 bool checkable = true)
+                                 lv_style_t* base_style,
+                                 lv_style_t* checked_style,
+                                 bool checkable)
 {
     lv_obj_t* btn = lv_btn_create(parent);
     lv_obj_remove_style_all(btn);
