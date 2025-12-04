@@ -263,10 +263,10 @@ static void show_rpm_detail(bool show)
         lv_obj_clear_flag(cont_rpm_detail, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_opa(cont_rpm_detail, LV_OPA_TRANSP, 0);
         lv_obj_move_foreground(cont_rpm_detail);
-        lv_obj_fade_in(cont_rpm_detail, 180, 0);
+        lv_obj_fade_in(cont_rpm_detail, 90, 0);
     } else {
-        lv_obj_fade_out(cont_rpm_detail, 140, 0);
-        hide_timer = lv_timer_create(hide_timer_cb, 150, nullptr);
+        lv_obj_fade_out(cont_rpm_detail, 70, 0);
+        hide_timer = lv_timer_create(hide_timer_cb, 80, nullptr);
     }
 }
 
@@ -329,14 +329,22 @@ static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_add_style(cont_rpm_detail, &st_screen, 0);
     lv_obj_set_size(cont_rpm_detail, w, h);
     lv_obj_center(cont_rpm_detail);
+    lv_obj_set_layout(cont_rpm_detail, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(cont_rpm_detail, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(cont_rpm_detail, 12, 0);
+    lv_obj_set_style_pad_row(cont_rpm_detail, 12, 0);
     lv_obj_add_flag(cont_rpm_detail, LV_OBJ_FLAG_HIDDEN);
 
     // Header bar
     lv_obj_t* header = lv_obj_create(cont_rpm_detail);
     lv_obj_remove_style_all(header);
     lv_obj_add_style(header, &st_statusbar, 0);
-    lv_obj_set_size(header, w, 64);
-    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_width(header, LV_PCT(100));
+    lv_obj_set_height(header, 64);
+    lv_obj_set_style_pad_left(header, 12, 0);
+    lv_obj_set_style_pad_right(header, 12, 0);
+    lv_obj_set_style_pad_top(header, 8, 0);
+    lv_obj_set_style_pad_bottom(header, 8, 0);
 
     btn_back = make_chip_button(header, "← Back", [](lv_event_t* e) {
         LV_UNUSED(e);
@@ -347,7 +355,7 @@ static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_t* lbl_title = lv_label_create(header);
     lv_obj_add_style(lbl_title, &st_value, 0);
     lv_label_set_text(lbl_title, "RPM Monitor");
-    lv_obj_align(lbl_title, LV_ALIGN_LEFT_MID, 120, 0);
+    lv_obj_align(lbl_title, LV_ALIGN_LEFT_MID, 96, 0);
 
     lv_obj_t* res_group = lv_obj_create(header);
     lv_obj_remove_style_all(res_group);
@@ -355,7 +363,7 @@ static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_set_style_pad_column(res_group, 8, 0);
     lv_obj_set_layout(res_group, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(res_group, LV_FLEX_FLOW_ROW);
-    lv_obj_align(res_group, LV_ALIGN_RIGHT_MID, -8, 0);
+    lv_obj_align(res_group, LV_ALIGN_RIGHT_MID, 0, 0);
 
     btn_resolutions[0] = make_chip_button(res_group, "6h", [](lv_event_t* e) {
         set_rpm_resolution(0);
@@ -371,8 +379,9 @@ static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_t* chart_card = lv_obj_create(cont_rpm_detail);
     lv_obj_remove_style_all(chart_card);
     lv_obj_add_style(chart_card, &st_chart_bg, 0);
-    lv_obj_set_size(chart_card, w - 32, h - 96);
-    lv_obj_align(chart_card, LV_ALIGN_BOTTOM_MID, 0, -8);
+    lv_obj_set_width(chart_card, LV_PCT(100));
+    lv_obj_set_flex_grow(chart_card, 1);
+    lv_obj_set_style_pad_all(chart_card, 12, 0);
 
     chart_rpm = lv_chart_create(chart_card);
     lv_obj_set_size(chart_rpm, LV_PCT(100), LV_PCT(100));
