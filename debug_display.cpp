@@ -28,8 +28,6 @@ extern "C" {
   extern esp_lcd_panel_handle_t panel_handle;
 }
 
-static const char* TAG = "debug_display";
-
 // ---------- LVGL plumbing ----------
 static lv_disp_t* s_disp          = nullptr;
 static lv_disp_draw_buf_t s_draw;
@@ -198,8 +196,6 @@ static void my_flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* color_p
   const int xs     = a->y1;               // panel X start (derived from LV y)
   const int xe     = a->y2 + 1;           // panel X end (exclusive)
   const int ys     = LOGICAL_W - 1 - a->x2; // panel Y start (derived from LV x)
-  const int ye     = LOGICAL_W - a->x1;     // panel Y end (exclusive)
-
   const int rows_total = dest_h;
   const int rows_step  = s_stripe_lines > 0 ? s_stripe_lines : rows_total;
 
@@ -227,8 +223,8 @@ static void my_flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* color_p
     }
 
     msync_c2m(s_bounce, inner_w * inner_h * sizeof(uint16_t));
-    Serial.printf("[flush] #%u LV a=(%d,%d)-(%d,%d) w=%d h=%d -> PANEL rect x=[%d..%d] y=[%d..%d] (dw=%d dh=%d)\n",
-                  flush_count++,
+    Serial.printf("[flush] #%lu LV a=(%d,%d)-(%d,%d) w=%d h=%d -> PANEL rect x=[%d..%d] y=[%d..%d] (dw=%d dh=%d)\n",
+                  static_cast<unsigned long>(flush_count++),
                   a->x1, a->y1, a->x2, a->y2, src_w, src_h,
                   xs, xe - 1, Y1, Y2 - 1, (xe - xs), (Y2 - Y1));
 
