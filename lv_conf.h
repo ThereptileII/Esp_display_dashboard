@@ -109,7 +109,7 @@
 /*=================
  * GPU / RENDER
  *=================*/
-#define LV_USE_GPU                   0
+#define LV_USE_GPU                   1
 #define LV_USE_DRAW_SW               1
 
 /*=================
@@ -128,5 +128,12 @@
  *=================*/
 #define LV_USE_PERF_MONITOR          0
 #define LV_USE_MEM_MONITOR           0
+
+
+/*=================
+ * FRAMERATE
+ *=================*/
+#define LV_DISP_DEF_REFR_PERIOD   16  // ~60 FPS
+
 
 #endif /* LV_CONF_H */
