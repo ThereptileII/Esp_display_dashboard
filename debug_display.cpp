@@ -39,6 +39,7 @@ static lv_color_t* s_buf2         = nullptr;
 // Bounce buffer (DMA-capable internal RAM) used by our striped flush
 static uint16_t* s_bounce         = nullptr;
 static int       s_stripe_lines   = 120;      // LV rows per sub-flush
+static size_t    s_bounce_bytes   = 0;        // actual allocation size
 
 // LVGL logical framebuffer matches the panel's native portrait orientation.
 static constexpr int PANEL_W      = 800;      // JD9365 native width (portrait)
@@ -143,11 +144,13 @@ bool dbg_display_init(void) {
   s_buf2 = (lv_color_t*)heap_caps_malloc(LOGICAL_W * buf_lines * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
 
   // DMA bounce buffer must exist (internal RAM). Retry with smaller stripes if needed.
-  s_bounce = (uint16_t*)heap_caps_malloc(PANEL_W * s_stripe_lines * sizeof(uint16_t),
+  s_bounce_bytes = PANEL_W * s_stripe_lines * sizeof(uint16_t);
+  s_bounce = (uint16_t*)heap_caps_malloc(s_bounce_bytes,
                                          MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   if (!s_bounce) {
     s_stripe_lines = 60;
-    s_bounce = (uint16_t*)heap_caps_malloc(PANEL_W * s_stripe_lines * sizeof(uint16_t),
+    s_bounce_bytes = PANEL_W * s_stripe_lines * sizeof(uint16_t);
+    s_bounce = (uint16_t*)heap_caps_malloc(s_bounce_bytes,
                                            MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   }
 
@@ -156,6 +159,7 @@ bool dbg_display_init(void) {
     Serial.println(F("[alloc][FATAL] bounce buffer allocation failed"));
     if (s_buf1) { free(s_buf1); s_buf1 = nullptr; }
     if (s_buf2) { free(s_buf2); s_buf2 = nullptr; }
+    s_bounce_bytes = 0;
     return false;
   }
 
@@ -163,7 +167,7 @@ bool dbg_display_init(void) {
   if (!s_buf1) {
     Serial.println(F("[alloc][FATAL] LVGL draw buffer #1 allocation failed"));
     if (s_buf2) { free(s_buf2); s_buf2 = nullptr; }
-    free(s_bounce); s_bounce = nullptr;
+    free(s_bounce); s_bounce = nullptr; s_bounce_bytes = 0;
     return false;
   }
 
@@ -181,7 +185,7 @@ bool dbg_display_init(void) {
     Serial.printf("[alloc] LVGL PSRAM buffer #2 OK: %d bytes\n", buf_bytes);
   }
   Serial.printf("[alloc] bounce buffer OK: %d bytes (stripe_lines=%d)\n",
-                PANEL_W * s_stripe_lines * (int)sizeof(uint16_t), s_stripe_lines);
+                (int)s_bounce_bytes, s_stripe_lines);
   Serial.printf("[mem][post-alloc] INT free=%u big=%u | DMA free=%u big=%u | PSRAM free=%u\n",
                 (unsigned)int_free, (unsigned)int_big, (unsigned)dma_free, (unsigned)dma_big, (unsigned)psram_free);
 
@@ -203,7 +207,7 @@ bool dbg_display_init(void) {
 // ============ LVGL flush (no rotation, portrait native) ============
 static void my_flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* color_p) {
   (void)drv;
-  if (!panel_handle || !s_bounce) { lv_disp_flush_ready(drv); return; }
+  if (!panel_handle || !s_bounce || !color_p) { lv_disp_flush_ready(drv); return; }
 
   int x1 = a->x1, y1 = a->y1, x2 = a->x2, y2 = a->y2;
   if (x2 < x1 || y2 < y1) { lv_disp_flush_ready(drv); return; }
@@ -211,13 +215,23 @@ static void my_flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* color_p
   const int dest_w = (x2 - x1 + 1);
   const int dest_h = (y2 - y1 + 1);
 
-  const int rows_total = dest_h;
-  const int rows_step  = s_stripe_lines > 0 ? s_stripe_lines : rows_total;
+  if (dest_w <= 0 || dest_h <= 0 || dest_w > PANEL_W || dest_h > PANEL_H) {
+    Serial.printf("[flush][WARN] invalid area w=%d h=%d (panel %dx%d)\n", dest_w, dest_h, PANEL_W, PANEL_H);
+    lv_disp_flush_ready(drv);
+    return;
+  }
+
+  // Ensure we never stride beyond the allocated bounce buffer regardless of stripe setting.
+  const size_t bounce_px_cap = s_bounce_bytes / sizeof(uint16_t);
+  if (bounce_px_cap == 0) { lv_disp_flush_ready(drv); return; }
+  int rows_step = bounce_px_cap / (size_t)dest_w;
+  if (rows_step <= 0) rows_step = 1;
+  if (rows_step > dest_h) rows_step = dest_h;
 
   static uint32_t flush_count = 0;
 
-  for (int row0 = 0; row0 < rows_total; row0 += rows_step) {
-    const int rows = (row0 + rows_step <= rows_total) ? rows_step : (rows_total - row0);
+  for (int row0 = 0; row0 < dest_h; row0 += rows_step) {
+    const int rows = (row0 + rows_step <= dest_h) ? rows_step : (dest_h - row0);
 
     const int xs = x1;
     const int xe = x2 + 1;           // exclusive
@@ -230,9 +244,8 @@ static void my_flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* color_p
     uint16_t* dst = s_bounce;
     for (int j = 0; j < inner_h; ++j) {
       const lv_color_t* src = color_p + (row0 + j) * dest_w;
-      for (int i = 0; i < inner_w; ++i) {
-        *dst++ = src[i].full; // RGB565
-      }
+      memcpy(dst, src, inner_w * sizeof(uint16_t));
+      dst += inner_w;
     }
 
     msync_c2m(s_bounce, inner_w * inner_h * sizeof(uint16_t));
