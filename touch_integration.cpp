@@ -52,12 +52,29 @@
 #endif
 // ----------------------------------------------------------------------
 
-static bool          s_verbose = true;
-static lv_indev_t*   s_indev   = nullptr;
-static uint8_t       s_rot     = 0;    // default: orientation matches LVGL logical coordinates
-static uint16_t      s_w       = 800;  // Updated at init from LVGL display
-static uint16_t      s_h       = 1280; // Updated at init from LVGL display
-static lv_disp_t*    s_disp    = nullptr;
+// Default to the native, non-rotated coordinate system (0). If your panel is
+// physically mounted differently, override TOUCH_DEFAULT_ROTATION in
+// pins_config.h (0..3) to match the display’s LVGL rotation.
+#ifndef TOUCH_DEFAULT_ROTATION
+#  define TOUCH_DEFAULT_ROTATION 0
+#endif
+
+// The glass on this build is flipped relative to LVGL’s native portrait
+// space, so invert X by default. You can override in pins_config.h if your
+// board is wired differently.
+#ifndef TOUCH_INVERT_X
+  #  define TOUCH_INVERT_X 1
+#endif
+#ifndef TOUCH_INVERT_Y
+  #  define TOUCH_INVERT_Y 0
+#endif
+
+static bool          s_verbose   = true;
+static lv_indev_t*   s_indev     = nullptr;
+static uint8_t       s_rot       = TOUCH_DEFAULT_ROTATION;
+static uint16_t      s_w         = 800;  // Updated at init from LVGL display
+static uint16_t      s_h         = 1280; // Updated at init from LVGL display
+static lv_disp_t*    s_disp      = nullptr;
 static lv_obj_t*     s_touch_dot = nullptr;
 
 // Construct with required pins (your header shows this ctor signature)
@@ -88,25 +105,54 @@ static void ensure_touch_indicator() {
 }
 
 static void touch_read_cb(lv_indev_drv_t* indev, lv_indev_data_t* data) {
-  (void)indev;
+  LV_UNUSED(indev);
+
+  static uint16_t last_x = 0, last_y = 0;
 
   uint16_t rx = 0, ry = 0;
-  bool pressed = s_touch.getTouch(&rx, &ry);  // vendor API: returns true while touching
+  bool pressed = s_touch.getTouch(&rx, &ry);
 
-  // Clamp to LVGL logical bounds (s_touch already applies rotation internally)
-  uint16_t lx = rx, ly = ry;
-  if (lx >= s_w) lx = s_w ? (s_w - 1) : 0;
-  if (ly >= s_h) ly = s_h ? (s_h - 1) : 0;
+  // Start from raw:
+  uint16_t x = rx, y = ry;
 
-  data->state   = pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
-  data->point.x = lx;
-  data->point.y = ly;
+  // ---- 1) Apply SWAP if needed ----
+#if TOUCH_SWAP_XY
+  {
+    uint16_t t = x;
+    x         = y;
+    y         = t;
+  }
+#endif
+
+  // ---- 2) Clamp to LVGL logical bounds ----
+  if (x >= s_w) x = s_w ? (s_w - 1) : 0;
+  if (y >= s_h) y = s_h ? (s_h - 1) : 0;
+
+  // ---- 3) Optional invert (depends on how your panel is mounted) ----
+#if TOUCH_INVERT_X
+  x = (s_w > 0) ? (s_w - 1 - x) : x;
+#endif
+#if TOUCH_INVERT_Y
+  y = (s_h > 0) ? (s_h - 1 - y) : y;
+#endif
+
+  if (pressed) {
+    last_x       = x;
+    last_y       = y;
+    data->state   = LV_INDEV_STATE_PRESSED;
+    data->point.x = x;
+    data->point.y = y;
+  } else {
+    data->state   = LV_INDEV_STATE_RELEASED;
+    data->point.x = last_x;
+    data->point.y = last_y;
+  }
 
   ensure_touch_indicator();
   if (s_touch_dot) {
     lv_coord_t dot_w = lv_obj_get_width(s_touch_dot);
     lv_coord_t dot_h = lv_obj_get_height(s_touch_dot);
-    lv_obj_set_pos(s_touch_dot, lx - dot_w / 2, ly - dot_h / 2);
+    lv_obj_set_pos(s_touch_dot, data->point.x - dot_w / 2, data->point.y - dot_h / 2);
     if (pressed) {
       lv_obj_clear_flag(s_touch_dot, LV_OBJ_FLAG_HIDDEN);
       lv_obj_move_foreground(s_touch_dot);
@@ -120,7 +166,7 @@ static void touch_read_cb(lv_indev_drv_t* indev, lv_indev_data_t* data) {
     uint32_t now = millis();
     if (now - last > 150) {
       Serial.printf("[touch] raw=(%u,%u) -> lv=(%u,%u) pressed=%d rot=%u\n",
-                    rx, ry, lx, ly, (int)pressed, s_rot);
+                    rx, ry, data->point.x, data->point.y, (int)pressed, s_rot);
       last = now;
     }
   }
@@ -143,11 +189,11 @@ bool touch_init_and_register(lv_disp_t* disp) {
   Serial.printf("[touch] begin(sda=%d scl=%d rst=%d int=%d)\n", TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
   s_touch.begin();
 
-  // Start with the panel's natural orientation. Adjust in setup() if required.
-  touch_set_rotation(0);
+  // Start with the orientation that matched the working example (can be overridden).
+  touch_set_rotation(TOUCH_DEFAULT_ROTATION);
 
-  // Register LVGL input device
-  lv_indev_drv_t drv;
+  // Register LVGL input device (drv must stay in scope, so keep it static)
+  static lv_indev_drv_t drv;
   lv_indev_drv_init(&drv);
   drv.type    = LV_INDEV_TYPE_POINTER;  // LVGL v8; no indev “mode” API here
   drv.read_cb = touch_read_cb;
