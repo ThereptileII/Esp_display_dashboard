@@ -59,9 +59,12 @@
 #  define TOUCH_DEFAULT_ROTATION 0
 #endif
 
-// The glass on this build is flipped vertically relative to LVGL’s native
-// portrait space, so invert Y by default. You can override in pins_config.h if
+// The glass on this build is flipped relative to LVGL’s native portrait
+// space, so invert both axes by default. You can override in pins_config.h if
 // your board is wired differently.
+#ifndef TOUCH_INVERT_X
+#  define TOUCH_INVERT_X 1
+#endif
 #ifndef TOUCH_INVERT_Y
 #  define TOUCH_INVERT_Y 1
 #endif
