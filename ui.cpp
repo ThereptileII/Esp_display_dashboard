@@ -108,7 +108,7 @@ static void apply_styles()
 
     lv_style_init(&st_label);
     lv_style_set_text_color(&st_label, COL_TXT);
-    lv_style_set_text_font(&st_label, FONT_MD);
+    lv_style_set_text_font(&st_label, FONT_SM);
 }
 
 static void build_status_bar(lv_obj_t* parent, lv_coord_t w)
@@ -127,7 +127,7 @@ static void build_status_bar(lv_obj_t* parent, lv_coord_t w)
 
     lv_obj_t* lbl_conn = lv_label_create(cont_status);
     lv_obj_add_style(lbl_conn, &st_label, 0);
-    lv_label_set_text(lbl_conn, "CAN: OK  •  GPS: 3D  •  LOG: SD");
+    lv_label_set_text(lbl_conn, "CAN: OK  *  GPS: 3D  *  LOG: SD");
     lv_obj_align(lbl_conn, LV_ALIGN_RIGHT_MID, 0, 0);
 }
 
