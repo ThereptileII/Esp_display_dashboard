@@ -31,5 +31,7 @@ void loop() {
   }
 
   lv_timer_handler();  // let LVGL do its work
-  delay(1);            // yield a tick to RTOS so DSI can finish its frame
+  // Tighten the loop so the display updates as quickly as LVGL schedules it
+  // while still yielding to the RTOS.
+  delay(0);
 }
