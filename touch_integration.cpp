@@ -90,6 +90,8 @@ static void ensure_touch_indicator() {
 static void touch_read_cb(lv_indev_drv_t* indev, lv_indev_data_t* data) {
   (void)indev;
 
+  static uint16_t last_x = 0, last_y = 0;
+
   uint16_t rx = 0, ry = 0;
   bool pressed = s_touch.getTouch(&rx, &ry);  // vendor API: returns true while touching
 
@@ -98,9 +100,17 @@ static void touch_read_cb(lv_indev_drv_t* indev, lv_indev_data_t* data) {
   if (lx >= s_w) lx = s_w ? (s_w - 1) : 0;
   if (ly >= s_h) ly = s_h ? (s_h - 1) : 0;
 
-  data->state   = pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
-  data->point.x = lx;
-  data->point.y = ly;
+  if (pressed) {
+    last_x = lx;
+    last_y = ly;
+    data->state   = LV_INDEV_STATE_PRESSED;
+    data->point.x = lx;
+    data->point.y = ly;
+  } else {
+    data->state   = LV_INDEV_STATE_RELEASED;
+    data->point.x = last_x;
+    data->point.y = last_y;
+  }
 
   ensure_touch_indicator();
   if (s_touch_dot) {
