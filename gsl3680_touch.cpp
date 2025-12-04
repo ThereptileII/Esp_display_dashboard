@@ -16,6 +16,7 @@
 
 static const char *TAG = "gsl3680";
 static bool        s_verbose = false;
+static bool        s_ready   = false;
 
 esp_lcd_touch_handle_t tp;
 esp_lcd_panel_io_handle_t tp_io_handle;
@@ -34,6 +35,8 @@ gsl3680_touch::gsl3680_touch(int8_t sda_pin, int8_t scl_pin, int8_t rst_pin, int
 
 bool gsl3680_touch::begin()
 {
+    s_ready = false;
+
     Serial.printf("[gsl3680] begin(sda=%d scl=%d rst=%d int=%d)\n", _sda, _scl, _rst, _int);
 
     if (_sda < 0 || _scl < 0) {
@@ -105,6 +108,7 @@ bool gsl3680_touch::begin()
     }
 
     Serial.println("[gsl3680] init OK");
+    s_ready = true;
     return true;
 }
 
@@ -121,8 +125,8 @@ bool gsl3680_touch::getTouch(uint16_t *x, uint16_t *y, uint8_t *count_out, uint1
     touch_cnt = 0;
     memset(touch_strength, 0, sizeof(touch_strength));
 
-    if (!tp) {
-        Serial.println("[gsl3680] ERROR: touch handle is null; begin() probably failed");
+    if (!s_ready || !tp || !tp_io_handle) {
+        Serial.println("[gsl3680] ERROR: touch not initialized; begin() probably failed");
         *x = *y = 0;
         return false;
     }
@@ -144,6 +148,9 @@ bool gsl3680_touch::getTouch(uint16_t *x, uint16_t *y, uint8_t *count_out, uint1
     uint16_t strength_buf[5]  = {0};
     uint8_t  coord_count      = 0;
     bool     touchpad_pressed = esp_lcd_touch_get_coordinates(tp, x_buf, y_buf, strength_buf, &coord_count, 5);
+    if (coord_count > 5) {
+        coord_count = 5;
+    }
     touch_cnt                 = coord_count;
     if (touch_cnt > 0) {
         *x               = x_buf[0];
@@ -168,7 +175,7 @@ bool gsl3680_touch::getTouch(uint16_t *x, uint16_t *y, uint8_t *count_out, uint1
 
     // If the esp_lcd helper returns no points, fall back to a direct register read so we
     // can still surface events even if the algorithm path fails to populate XY_Coordinate.
-    if (!touchpad_pressed && tp_io_handle) {
+    if (!touchpad_pressed) {
         uint8_t raw[24] = {0};
         err = esp_lcd_panel_io_rx_param(tp_io_handle, 0x80, raw, sizeof(raw));
         if (err == ESP_OK && raw[0] > 0) {
