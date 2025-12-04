@@ -25,12 +25,23 @@ static const lv_color_t COL_MUTED  = lv_color_hex(0x7F8C8D);
 
 // ---- Styles ----
 static lv_style_t st_screen, st_statusbar, st_footer, st_card, st_title, st_value, st_label;
+static lv_style_t st_chip, st_chip_checked, st_chart_bg;
 
 // ---- Roots ----
 lv_obj_t* ui_root = nullptr;
 static lv_obj_t* cont_status = nullptr;
 static lv_obj_t* cont_grid   = nullptr;
 static lv_obj_t* cont_footer = nullptr;
+static lv_obj_t* cont_rpm_detail = nullptr;
+static lv_obj_t* btn_resolutions[3] = {nullptr, nullptr, nullptr};
+static lv_obj_t* btn_back = nullptr;
+static lv_obj_t* chart_rpm = nullptr;
+static lv_chart_series_t* chart_series_rpm = nullptr;
+static lv_timer_t* hide_timer = nullptr;
+
+// ---- Forward declarations ----
+static void show_rpm_detail(bool show);
+static void set_rpm_resolution(int idx);
 
 // ---- Page state (single page) ----
 static int s_current_page = 0; // 0 .. ui_page_count()-1
@@ -109,6 +120,30 @@ static void apply_styles()
     lv_style_init(&st_label);
     lv_style_set_text_color(&st_label, COL_TXT);
     lv_style_set_text_font(&st_label, FONT_SM);
+
+    lv_style_init(&st_chip);
+    lv_style_set_bg_color(&st_chip, COL_CARD);
+    lv_style_set_bg_opa(&st_chip, LV_OPA_COVER);
+    lv_style_set_radius(&st_chip, 12);
+    lv_style_set_pad_all(&st_chip, 10);
+    lv_style_set_outline_width(&st_chip, 1);
+    lv_style_set_outline_color(&st_chip, lv_color_hex(0x1B252D));
+    lv_style_set_text_color(&st_chip, COL_TXT);
+    lv_style_set_text_font(&st_chip, FONT_SM);
+
+    lv_style_init(&st_chip_checked);
+    lv_style_set_bg_color(&st_chip_checked, COL_ORANGE);
+    lv_style_set_bg_opa(&st_chip_checked, LV_OPA_COVER);
+    lv_style_set_text_color(&st_chip_checked, lv_color_hex(0x0B0F14));
+
+    lv_style_init(&st_chart_bg);
+    lv_style_set_bg_color(&st_chart_bg, COL_CARD);
+    lv_style_set_bg_opa(&st_chart_bg, LV_OPA_COVER);
+    lv_style_set_radius(&st_chart_bg, 16);
+    lv_style_set_outline_color(&st_chart_bg, lv_color_hex(0x10161C));
+    lv_style_set_outline_width(&st_chart_bg, 1);
+    lv_style_set_shadow_width(&st_chart_bg, 14);
+    lv_style_set_shadow_opa(&st_chart_bg, LV_OPA_30);
 }
 
 static void build_status_bar(lv_obj_t* parent, lv_coord_t w)
@@ -201,6 +236,170 @@ static void build_grid(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_label_set_text(badge, "⚠ NO ALARMS");
     lv_obj_set_style_text_color(badge, COL_GREEN, 0);
     lv_obj_align(badge, LV_ALIGN_BOTTOM_RIGHT, -12, -10);
+
+    // RPM detail navigation
+    lv_obj_add_flag(c_rpm, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(c_rpm, [](lv_event_t* e) {
+        LV_UNUSED(e);
+        show_rpm_detail(true);
+    }, LV_EVENT_CLICKED, nullptr);
+}
+
+static void hide_timer_cb(lv_timer_t* timer)
+{
+    if (cont_rpm_detail) {
+        lv_obj_add_flag(cont_rpm_detail, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_timer_del(timer);
+    hide_timer = nullptr;
+}
+
+static void show_rpm_detail(bool show)
+{
+    if (!cont_rpm_detail) return;
+    if (show) {
+        if (hide_timer) {
+            lv_timer_del(hide_timer);
+            hide_timer = nullptr;
+        }
+        lv_obj_clear_flag(cont_rpm_detail, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_opa(cont_rpm_detail, LV_OPA_TRANSP, 0);
+        lv_obj_move_foreground(cont_rpm_detail);
+        lv_obj_fade_in(cont_rpm_detail, 180, 0);
+    } else {
+        lv_obj_fade_out(cont_rpm_detail, 140, 0);
+        hide_timer = lv_timer_create(hide_timer_cb, 150, nullptr);
+    }
+}
+
+static void set_rpm_resolution(int idx)
+{
+    for (int i = 0; i < 3; ++i) {
+        if (!btn_resolutions[i]) continue;
+        lv_obj_clear_state(btn_resolutions[i], LV_STATE_CHECKED);
+        if (i == idx) {
+            lv_obj_add_state(btn_resolutions[i], LV_STATE_CHECKED);
+        }
+    }
+
+    static const lv_coord_t data_6h[]  = {1320, 1340, 1360, 1380, 1420, 1460, 1480, 1500, 1470, 1440};
+    static const lv_coord_t data_12h[] = {1280, 1300, 1310, 1330, 1345, 1360, 1390, 1420, 1450, 1490, 1520, 1500};
+    static const lv_coord_t data_24h[] = {1200, 1220, 1250, 1270, 1300, 1320, 1350, 1365, 1380, 1400, 1420, 1430, 1440, 1460, 1475, 1490};
+
+    const lv_coord_t* data = data_6h;
+    uint16_t cnt = sizeof(data_6h) / sizeof(data_6h[0]);
+    switch (idx) {
+    case 1:
+        data = data_12h;
+        cnt = sizeof(data_12h) / sizeof(data_12h[0]);
+        break;
+    case 2:
+        data = data_24h;
+        cnt = sizeof(data_24h) / sizeof(data_24h[0]);
+        break;
+    default:
+        break;
+    }
+
+    lv_chart_set_point_count(chart_rpm, cnt);
+    for (uint16_t i = 0; i < cnt; ++i) {
+        lv_chart_set_value_by_id(chart_rpm, chart_series_rpm, i, data[i]);
+    }
+    lv_chart_refresh(chart_rpm);
+}
+
+static lv_obj_t* make_chip_button(lv_obj_t* parent, const char* text, lv_event_cb_t cb, void* user_data)
+{
+    lv_obj_t* btn = lv_btn_create(parent);
+    lv_obj_remove_style_all(btn);
+    lv_obj_add_style(btn, &st_chip, 0);
+    lv_obj_add_style(btn, &st_chip_checked, LV_STATE_CHECKED);
+    lv_obj_add_flag(btn, LV_OBJ_FLAG_CHECKABLE);
+    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user_data);
+
+    lv_obj_t* lbl = lv_label_create(btn);
+    lv_obj_add_style(lbl, &st_label, 0);
+    lv_label_set_text(lbl, text);
+    lv_obj_center(lbl);
+    return btn;
+}
+
+static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
+{
+    cont_rpm_detail = lv_obj_create(parent);
+    lv_obj_remove_style_all(cont_rpm_detail);
+    lv_obj_add_style(cont_rpm_detail, &st_screen, 0);
+    lv_obj_set_size(cont_rpm_detail, w, h);
+    lv_obj_center(cont_rpm_detail);
+    lv_obj_add_flag(cont_rpm_detail, LV_OBJ_FLAG_HIDDEN);
+
+    // Header bar
+    lv_obj_t* header = lv_obj_create(cont_rpm_detail);
+    lv_obj_remove_style_all(header);
+    lv_obj_add_style(header, &st_statusbar, 0);
+    lv_obj_set_size(header, w, 64);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
+
+    btn_back = make_chip_button(header, "← Back", [](lv_event_t* e) {
+        LV_UNUSED(e);
+        show_rpm_detail(false);
+    }, nullptr);
+    lv_obj_align(btn_back, LV_ALIGN_LEFT_MID, 0, 0);
+
+    lv_obj_t* lbl_title = lv_label_create(header);
+    lv_obj_add_style(lbl_title, &st_value, 0);
+    lv_label_set_text(lbl_title, "RPM Monitor");
+    lv_obj_align(lbl_title, LV_ALIGN_LEFT_MID, 120, 0);
+
+    lv_obj_t* res_group = lv_obj_create(header);
+    lv_obj_remove_style_all(res_group);
+    lv_obj_set_style_pad_row(res_group, 0, 0);
+    lv_obj_set_style_pad_column(res_group, 8, 0);
+    lv_obj_set_layout(res_group, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(res_group, LV_FLEX_FLOW_ROW);
+    lv_obj_align(res_group, LV_ALIGN_RIGHT_MID, -8, 0);
+
+    btn_resolutions[0] = make_chip_button(res_group, "6h", [](lv_event_t* e) {
+        set_rpm_resolution(0);
+    }, nullptr);
+    btn_resolutions[1] = make_chip_button(res_group, "12h", [](lv_event_t* e) {
+        set_rpm_resolution(1);
+    }, nullptr);
+    btn_resolutions[2] = make_chip_button(res_group, "24h", [](lv_event_t* e) {
+        set_rpm_resolution(2);
+    }, nullptr);
+
+    // Chart card
+    lv_obj_t* chart_card = lv_obj_create(cont_rpm_detail);
+    lv_obj_remove_style_all(chart_card);
+    lv_obj_add_style(chart_card, &st_chart_bg, 0);
+    lv_obj_set_size(chart_card, w - 32, h - 96);
+    lv_obj_align(chart_card, LV_ALIGN_BOTTOM_MID, 0, -8);
+
+    chart_rpm = lv_chart_create(chart_card);
+    lv_obj_set_size(chart_rpm, LV_PCT(100), LV_PCT(100));
+    lv_obj_center(chart_rpm);
+    lv_chart_set_type(chart_rpm, LV_CHART_TYPE_LINE);
+    lv_chart_set_point_count(chart_rpm, 10);
+    lv_chart_set_div_line_count(chart_rpm, 5, 7);
+    lv_chart_set_range(chart_rpm, LV_CHART_AXIS_PRIMARY_Y, 1200, 1600);
+    lv_obj_set_style_bg_color(chart_rpm, COL_CARD, 0);
+    lv_obj_set_style_bg_opa(chart_rpm, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(chart_rpm, 0, 0);
+    lv_obj_set_style_pad_all(chart_rpm, 16, 0);
+    lv_obj_set_style_line_width(chart_rpm, 4, LV_PART_ITEMS);
+    lv_obj_set_style_line_color(chart_rpm, COL_GREEN, LV_PART_ITEMS);
+    lv_obj_set_style_size(chart_rpm, 6, LV_PART_INDICATOR);
+    lv_chart_set_update_mode(chart_rpm, LV_CHART_UPDATE_MODE_CIRCULAR);
+    lv_chart_set_axis_tick(chart_rpm, LV_CHART_AXIS_PRIMARY_X, 8, 4, 6, 2, true, 40);
+    lv_chart_set_axis_tick(chart_rpm, LV_CHART_AXIS_PRIMARY_Y, 8, 4, 5, 2, true, 40);
+    lv_obj_set_style_grid_color(chart_rpm, lv_color_hex(0x1E2A32), 0);
+    lv_obj_set_style_grid_opa(chart_rpm, LV_OPA_60, 0);
+    lv_obj_set_style_text_font(chart_rpm, FONT_SM, 0);
+    lv_obj_set_style_text_color(chart_rpm, COL_MUTED, 0);
+
+    chart_series_rpm = lv_chart_add_series(chart_rpm, COL_GREEN, LV_CHART_AXIS_PRIMARY_Y);
+    set_rpm_resolution(0);
 }
 
 void ui_init(void)
@@ -222,6 +421,7 @@ void ui_init(void)
     build_status_bar(ui_root, w);
     build_grid(ui_root, w, h);
     build_footer(ui_root, w, h);
+    build_rpm_detail(ui_root, w, h);
 }
 
 /* ------- Compatibility shims ------- */
