@@ -33,10 +33,7 @@ static lv_disp_t* s_disp          = nullptr;
 static lv_disp_draw_buf_t s_draw;
 static lv_color_t* s_buf1         = nullptr;
 static lv_color_t* s_buf2         = nullptr;
-
-// Bounce buffer (DMA-capable internal RAM) used by our striped flush
-static uint16_t* s_bounce         = nullptr;
-static int       s_stripe_lines   = 120;      // LV rows per sub-flush
+static lv_color_t* s_rotated_full = nullptr;   // Full-screen rotated frame (panel orientation)
 
 // LVGL logical framebuffer is landscape (1280x800); panel is portrait
 // (800x1280). We rotate 90° counter-clockwise in the flush callback.
@@ -137,19 +134,13 @@ bool dbg_display_init(void) {
   // LVGL init and buffers
   lv_init();
 
-  const int buf_lines = 120; // 800×120×2 = 192,000 B per buffer
-  s_buf1 = (lv_color_t*)heap_caps_malloc(LOGICAL_W * buf_lines * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
-  s_buf2 = (lv_color_t*)heap_caps_malloc(LOGICAL_W * buf_lines * sizeof(lv_color_t), MALLOC_CAP_SPIRAM);
+  const size_t buf_pixels = LOGICAL_W * LOGICAL_H; // Full-screen buffers
+  s_buf1 = (lv_color_t*)heap_caps_malloc(buf_pixels * sizeof(lv_color_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  s_buf2 = (lv_color_t*)heap_caps_malloc(buf_pixels * sizeof(lv_color_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 
-  s_bounce = (uint16_t*)heap_caps_malloc(PANEL_W * s_stripe_lines * sizeof(uint16_t),
-                                         MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  if (!s_buf1 || !s_buf2 || !s_bounce) {
-    // Try smaller stripes
-    if (s_bounce) { free(s_bounce); s_bounce = nullptr; }
-    s_stripe_lines = 60;
-    s_bounce = (uint16_t*)heap_caps_malloc(PANEL_W * s_stripe_lines * sizeof(uint16_t),
-                                           MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  }
+  // Rotate the full LVGL frame (landscape) into panel orientation (portrait) in one shot
+  s_rotated_full = (lv_color_t*)heap_caps_malloc(PANEL_W * PANEL_H * sizeof(lv_color_t),
+                                                 MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
 
   size_t int_free  = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
   size_t int_big   = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
@@ -157,15 +148,18 @@ bool dbg_display_init(void) {
   size_t dma_big   = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
   size_t psram_free= heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
 
-  if (s_buf1 && s_buf2 && s_bounce) {
-    Serial.printf("[alloc] LVGL PSRAM buffers OK: %d bytes each, bounce=%d bytes\n",
-                  LOGICAL_W * buf_lines * (int)sizeof(lv_color_t),
-                  PANEL_W * s_stripe_lines * (int)sizeof(uint16_t));
+  if (s_buf1 && s_buf2 && s_rotated_full) {
+    Serial.printf("[alloc] LVGL PSRAM buffers OK: %d bytes each, rotated frame=%d bytes\n",
+                  (int)(buf_pixels * sizeof(lv_color_t)),
+                  (int)(PANEL_W * PANEL_H * sizeof(lv_color_t)));
+  } else {
+    Serial.println(F("[alloc][FATAL] LVGL buffers could not be allocated"));
+    return false;
   }
   Serial.printf("[mem][post-alloc] INT free=%u big=%u | DMA free=%u big=%u | PSRAM free=%u\n",
                 (unsigned)int_free, (unsigned)int_big, (unsigned)dma_free, (unsigned)dma_big, (unsigned)psram_free);
 
-  lv_disp_draw_buf_init(&s_draw, s_buf1, s_buf2, LOGICAL_W * buf_lines);
+  lv_disp_draw_buf_init(&s_draw, s_buf1, s_buf2, buf_pixels);
 
   static lv_disp_drv_t drv;
   lv_disp_drv_init(&drv);
@@ -173,9 +167,10 @@ bool dbg_display_init(void) {
   drv.ver_res   = LOGICAL_H;
   drv.flush_cb  = my_flush;
   drv.draw_buf  = &s_draw;
+  drv.full_refresh = 1; // Always flush a whole frame
   s_disp = lv_disp_drv_register(&drv);
 
-  Serial.printf("[display] ready. stripe_lines=%d (LV logical)\n", s_stripe_lines);
+  Serial.println(F("[display] ready. full-frame double buffering enabled"));
   return true;
 }
 
@@ -184,52 +179,37 @@ static void my_flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* color_p
   (void)drv;
   if (!panel_handle) { lv_disp_flush_ready(drv); return; }
 
-  int x1 = a->x1, y1 = a->y1, x2 = a->x2, y2 = a->y2;
-  if (x2 < x1 || y2 < y1) { lv_disp_flush_ready(drv); return; }
+  const int x1 = a->x1, y1 = a->y1, x2 = a->x2, y2 = a->y2;
+  if (x2 < x1 || y2 < y1 || !s_rotated_full) { lv_disp_flush_ready(drv); return; }
 
+  // Expect a full-frame refresh (full_refresh=1). If not, we still handle the area but log once.
   const int src_w = (x2 - x1 + 1);  // LV logical width of the area
   const int src_h = (y2 - y1 + 1);  // LV logical height of the area
+  const bool full_frame = (x1 == 0 && y1 == 0 && src_w == LOGICAL_W && src_h == LOGICAL_H);
 
   // Rotate 90° CCW: (x, y) -> (y, LOGICAL_W - 1 - x)
-  const int dest_w = src_h;               // becomes panel width span
-  const int dest_h = src_w;               // becomes panel height span
-  const int xs     = a->y1;               // panel X start (derived from LV y)
-  const int xe     = a->y2 + 1;           // panel X end (exclusive)
-  const int ys     = LOGICAL_W - 1 - a->x2; // panel Y start (derived from LV x)
-  const int rows_total = dest_h;
-  const int rows_step  = s_stripe_lines > 0 ? s_stripe_lines : rows_total;
+  const int dest_w = PANEL_W;             // panel width (portrait)
+  const int dest_h = PANEL_H;             // panel height (portrait)
+
+  lv_color_t* dst = s_rotated_full;
+  for (int sy = 0; sy < src_h; ++sy) {
+    const lv_color_t* src_row = color_p + (sy * src_w);
+    for (int sx = 0; sx < src_w; ++sx) {
+      const int dx = y1 + sy;                 // LV y becomes panel x
+      const int dy = LOGICAL_W - 1 - (x1 + sx); // LV x becomes panel y (inverted)
+      dst[dy * dest_w + dx] = src_row[sx];
+    }
+  }
+
+  msync_c2m(s_rotated_full, dest_w * dest_h * sizeof(lv_color_t));
 
   static uint32_t flush_count = 0;
+  Serial.printf("[flush] #%lu LV a=(%d,%d)-(%d,%d) w=%d h=%d -> PANEL full-frame=%s\n",
+                static_cast<unsigned long>(flush_count++),
+                a->x1, a->y1, a->x2, a->y2, src_w, src_h,
+                full_frame ? "yes" : "no");
 
-  for (int row0 = 0; row0 < rows_total; row0 += rows_step) {
-    const int rows = (row0 + rows_step <= rows_total) ? rows_step : (rows_total - row0);
-
-    const int Y1 = ys + row0;
-    const int Y2 = Y1 + rows;        // exclusive
-
-    const int inner_w = dest_w;
-    const int inner_h = rows;
-
-    uint16_t* dst = s_bounce;
-    for (int j = 0; j < inner_h; ++j) {
-      // For a CCW rotation, each destination row maps to a decreasing LV x
-      // coordinate (src_x). src_y advances with dest_x.
-      const int src_x_offset = (src_w - 1) - (row0 + j);
-      for (int i = 0; i < inner_w; ++i) {
-        const int src_y_offset = i;
-        const lv_color_t* src  = color_p + (src_y_offset * src_w + src_x_offset);
-        *dst++ = src->full; // RGB565
-      }
-    }
-
-    msync_c2m(s_bounce, inner_w * inner_h * sizeof(uint16_t));
-    Serial.printf("[flush] #%lu LV a=(%d,%d)-(%d,%d) w=%d h=%d -> PANEL rect x=[%d..%d] y=[%d..%d] (dw=%d dh=%d)\n",
-                  static_cast<unsigned long>(flush_count++),
-                  a->x1, a->y1, a->x2, a->y2, src_w, src_h,
-                  xs, xe - 1, Y1, Y2 - 1, (xe - xs), (Y2 - Y1));
-
-    (void) draw_bitmap_retry(xs, Y1, xe, Y2, s_bounce);
-  }
+  (void) draw_bitmap_retry(0, 0, dest_w, dest_h, s_rotated_full);
 
   lv_disp_flush_ready(drv);
 }
