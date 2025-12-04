@@ -109,7 +109,7 @@
 /*=================
  * GPU / RENDER
  *=================*/
-#define LV_USE_GPU                   0
+#define LV_USE_GPU                   1
 #define LV_USE_DRAW_SW               1
 
 /*=================
