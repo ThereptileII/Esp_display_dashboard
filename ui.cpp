@@ -23,7 +23,7 @@ static const lv_color_t COL_MUTED  = lv_color_hex(0x7F8C8D);
 
 // ---- Styles ----
 static lv_style_t st_screen, st_statusbar, st_footer, st_card, st_title, st_value, st_label;
-static lv_style_t st_chip, st_chip_checked, st_chart_bg;
+static lv_style_t st_chip, st_chip_checked, st_chip_ghost, st_chart_bg;
 
 // ---- Roots ----
 lv_obj_t* ui_root = nullptr;
@@ -35,6 +35,8 @@ static lv_obj_t* btn_resolutions[3] = {nullptr, nullptr, nullptr};
 static lv_obj_t* btn_back = nullptr;
 static lv_obj_t* chart_rpm = nullptr;
 static lv_chart_series_t* chart_series_rpm = nullptr;
+static lv_obj_t* lbl_axis_x = nullptr;
+static lv_obj_t* lbl_axis_y = nullptr;
 static lv_timer_t* hide_timer = nullptr;
 
 // ---- Forward declarations ----
@@ -128,6 +130,18 @@ static void apply_styles()
     lv_style_set_outline_color(&st_chip, lv_color_hex(0x1B252D));
     lv_style_set_text_color(&st_chip, COL_TXT);
     lv_style_set_text_font(&st_chip, FONT_SM);
+
+    lv_style_init(&st_chip_ghost);
+    lv_style_set_bg_opa(&st_chip_ghost, LV_OPA_TRANSP);
+    lv_style_set_radius(&st_chip_ghost, 14);
+    lv_style_set_pad_left(&st_chip_ghost, 14);
+    lv_style_set_pad_right(&st_chip_ghost, 14);
+    lv_style_set_pad_top(&st_chip_ghost, 12);
+    lv_style_set_pad_bottom(&st_chip_ghost, 12);
+    lv_style_set_outline_width(&st_chip_ghost, 2);
+    lv_style_set_outline_color(&st_chip_ghost, lv_color_hex(0x23303A));
+    lv_style_set_text_color(&st_chip_ghost, COL_TXT);
+    lv_style_set_text_font(&st_chip_ghost, FONT_SM);
 
     lv_style_init(&st_chip_checked);
     lv_style_set_bg_color(&st_chip_checked, COL_ORANGE);
@@ -286,14 +300,17 @@ static void set_rpm_resolution(int idx)
 
     const lv_coord_t* data = data_6h;
     uint16_t cnt = sizeof(data_6h) / sizeof(data_6h[0]);
+    const char* time_scale = "Time (6h)";
     switch (idx) {
     case 1:
         data = data_12h;
         cnt = sizeof(data_12h) / sizeof(data_12h[0]);
+        time_scale = "Time (12h)";
         break;
     case 2:
         data = data_24h;
         cnt = sizeof(data_24h) / sizeof(data_24h[0]);
+        time_scale = "Time (24h)";
         break;
     default:
         break;
@@ -304,15 +321,25 @@ static void set_rpm_resolution(int idx)
         lv_chart_set_value_by_id(chart_rpm, chart_series_rpm, i, data[i]);
     }
     lv_chart_refresh(chart_rpm);
+
+    if (lbl_axis_x) {
+        lv_label_set_text(lbl_axis_x, time_scale);
+    }
 }
 
-static lv_obj_t* make_chip_button(lv_obj_t* parent, const char* text, lv_event_cb_t cb, void* user_data)
+static lv_obj_t* make_chip_button(lv_obj_t* parent,
+                                 const char* text,
+                                 lv_event_cb_t cb,
+                                 void* user_data,
+                                 const lv_style_t* base_style = &st_chip,
+                                 const lv_style_t* checked_style = &st_chip_checked,
+                                 bool checkable = true)
 {
     lv_obj_t* btn = lv_btn_create(parent);
     lv_obj_remove_style_all(btn);
-    lv_obj_add_style(btn, &st_chip, 0);
-    lv_obj_add_style(btn, &st_chip_checked, LV_STATE_CHECKED);
-    lv_obj_add_flag(btn, LV_OBJ_FLAG_CHECKABLE);
+    if (base_style) lv_obj_add_style(btn, base_style, 0);
+    if (checkable && checked_style) lv_obj_add_style(btn, checked_style, LV_STATE_CHECKED);
+    if (checkable) lv_obj_add_flag(btn, LV_OBJ_FLAG_CHECKABLE);
     lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user_data);
 
     lv_obj_t* lbl = lv_label_create(btn);
@@ -340,22 +367,25 @@ static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_remove_style_all(header);
     lv_obj_add_style(header, &st_statusbar, 0);
     lv_obj_set_width(header, LV_PCT(100));
-    lv_obj_set_height(header, 64);
+    lv_obj_set_height(header, 56);
     lv_obj_set_style_pad_left(header, 12, 0);
     lv_obj_set_style_pad_right(header, 12, 0);
     lv_obj_set_style_pad_top(header, 8, 0);
     lv_obj_set_style_pad_bottom(header, 8, 0);
+    lv_obj_set_style_pad_column(header, 10, 0);
+    lv_obj_set_layout(header, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(header, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     btn_back = make_chip_button(header, "← Back", [](lv_event_t* e) {
         LV_UNUSED(e);
         show_rpm_detail(false);
-    }, nullptr);
-    lv_obj_align(btn_back, LV_ALIGN_LEFT_MID, 0, 0);
+    }, nullptr, &st_chip_ghost, nullptr, false);
 
     lv_obj_t* lbl_title = lv_label_create(header);
-    lv_obj_add_style(lbl_title, &st_value, 0);
+    lv_obj_add_style(lbl_title, &st_label, 0);
     lv_label_set_text(lbl_title, "RPM Monitor");
-    lv_obj_align(lbl_title, LV_ALIGN_LEFT_MID, 96, 0);
+    lv_obj_set_flex_grow(lbl_title, 1);
 
     lv_obj_t* res_group = lv_obj_create(header);
     lv_obj_remove_style_all(res_group);
@@ -363,7 +393,6 @@ static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_set_style_pad_column(res_group, 8, 0);
     lv_obj_set_layout(res_group, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(res_group, LV_FLEX_FLOW_ROW);
-    lv_obj_align(res_group, LV_ALIGN_RIGHT_MID, 0, 0);
 
     btn_resolutions[0] = make_chip_button(res_group, "6h", [](lv_event_t* e) {
         set_rpm_resolution(0);
@@ -398,10 +427,22 @@ static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_set_style_line_color(chart_rpm, COL_GREEN, LV_PART_ITEMS);
     lv_obj_set_style_size(chart_rpm, 6, LV_PART_INDICATOR);
     lv_chart_set_update_mode(chart_rpm, LV_CHART_UPDATE_MODE_CIRCULAR);
-    lv_chart_set_axis_tick(chart_rpm, LV_CHART_AXIS_PRIMARY_X, 8, 4, 6, 2, true, 40);
-    lv_chart_set_axis_tick(chart_rpm, LV_CHART_AXIS_PRIMARY_Y, 8, 4, 5, 2, true, 40);
+    lv_chart_set_axis_tick(chart_rpm, LV_CHART_AXIS_PRIMARY_X, 8, 4, 6, 1, true, 48);
+    lv_chart_set_axis_tick(chart_rpm, LV_CHART_AXIS_PRIMARY_Y, 8, 4, 5, 1, true, 48);
     lv_obj_set_style_text_font(chart_rpm, FONT_SM, 0);
     lv_obj_set_style_text_color(chart_rpm, COL_MUTED, 0);
+
+    lbl_axis_y = lv_label_create(chart_card);
+    lv_obj_add_style(lbl_axis_y, &st_label, 0);
+    lv_obj_set_style_text_color(lbl_axis_y, COL_MUTED, 0);
+    lv_label_set_text(lbl_axis_y, "RPM");
+    lv_obj_align(lbl_axis_y, LV_ALIGN_TOP_LEFT, 4, 4);
+
+    lbl_axis_x = lv_label_create(chart_card);
+    lv_obj_add_style(lbl_axis_x, &st_label, 0);
+    lv_obj_set_style_text_color(lbl_axis_x, COL_MUTED, 0);
+    lv_label_set_text(lbl_axis_x, "Time");
+    lv_obj_align(lbl_axis_x, LV_ALIGN_BOTTOM_RIGHT, -4, -4);
 
     chart_series_rpm = lv_chart_add_series(chart_rpm, COL_GREEN, LV_CHART_AXIS_PRIMARY_Y);
     set_rpm_resolution(0);
