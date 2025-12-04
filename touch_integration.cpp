@@ -95,41 +95,43 @@ static void ensure_touch_indicator() {
 }
 
 static void touch_read_cb(lv_indev_drv_t* indev, lv_indev_data_t* data) {
-  (void)indev;
+  LV_UNUSED(indev);
 
   static uint16_t last_x = 0, last_y = 0;
 
   uint16_t rx = 0, ry = 0;
-  bool pressed = s_touch.getTouch(&rx, &ry);  // vendor API: returns true while touching
+  bool pressed = s_touch.getTouch(&rx, &ry);
 
-  // Apply the same transform sequence that worked in the earlier snippet.
-  uint16_t lx = rx, ly = ry;
+  // Start from raw:
+  uint16_t x = rx, y = ry;
 
+  // ---- 1) Apply SWAP if needed ----
 #if TOUCH_SWAP_XY
   {
-    uint16_t t = lx;
-    lx         = ly;
-    ly         = t;
+    uint16_t t = x;
+    x         = y;
+    y         = t;
   }
 #endif
 
-  // Clamp to LVGL logical bounds (s_touch already applies rotation internally)
-  if (lx >= s_w) lx = s_w ? (s_w - 1) : 0;
-  if (ly >= s_h) ly = s_h ? (s_h - 1) : 0;
+  // ---- 2) Clamp to LVGL logical bounds ----
+  if (x >= s_w) x = s_w ? (s_w - 1) : 0;
+  if (y >= s_h) y = s_h ? (s_h - 1) : 0;
 
+  // ---- 3) Optional invert (depends on how your panel is mounted) ----
 #if TOUCH_INVERT_X
-  lx = (s_w > 0) ? (s_w - 1 - lx) : lx;
+  x = (s_w > 0) ? (s_w - 1 - x) : x;
 #endif
 #if TOUCH_INVERT_Y
-  ly = (s_h > 0) ? (s_h - 1 - ly) : ly;
+  y = (s_h > 0) ? (s_h - 1 - y) : y;
 #endif
 
   if (pressed) {
-    last_x = lx;
-    last_y = ly;
+    last_x       = x;
+    last_y       = y;
     data->state   = LV_INDEV_STATE_PRESSED;
-    data->point.x = lx;
-    data->point.y = ly;
+    data->point.x = x;
+    data->point.y = y;
   } else {
     data->state   = LV_INDEV_STATE_RELEASED;
     data->point.x = last_x;
@@ -140,7 +142,7 @@ static void touch_read_cb(lv_indev_drv_t* indev, lv_indev_data_t* data) {
   if (s_touch_dot) {
     lv_coord_t dot_w = lv_obj_get_width(s_touch_dot);
     lv_coord_t dot_h = lv_obj_get_height(s_touch_dot);
-    lv_obj_set_pos(s_touch_dot, lx - dot_w / 2, ly - dot_h / 2);
+    lv_obj_set_pos(s_touch_dot, data->point.x - dot_w / 2, data->point.y - dot_h / 2);
     if (pressed) {
       lv_obj_clear_flag(s_touch_dot, LV_OBJ_FLAG_HIDDEN);
       lv_obj_move_foreground(s_touch_dot);
@@ -154,7 +156,7 @@ static void touch_read_cb(lv_indev_drv_t* indev, lv_indev_data_t* data) {
     uint32_t now = millis();
     if (now - last > 150) {
       Serial.printf("[touch] raw=(%u,%u) -> lv=(%u,%u) pressed=%d rot=%u\n",
-                    rx, ry, lx, ly, (int)pressed, s_rot);
+                    rx, ry, data->point.x, data->point.y, (int)pressed, s_rot);
       last = now;
     }
   }
@@ -180,8 +182,8 @@ bool touch_init_and_register(lv_disp_t* disp) {
   // Start with the orientation that matched the working example (can be overridden).
   touch_set_rotation(TOUCH_DEFAULT_ROTATION);
 
-  // Register LVGL input device
-  lv_indev_drv_t drv;
+  // Register LVGL input device (drv must stay in scope, so keep it static)
+  static lv_indev_drv_t drv;
   lv_indev_drv_init(&drv);
   drv.type    = LV_INDEV_TYPE_POINTER;  // LVGL v8; no indev “mode” API here
   drv.read_cb = touch_read_cb;
