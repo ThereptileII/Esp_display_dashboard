@@ -52,12 +52,19 @@
 #endif
 // ----------------------------------------------------------------------
 
-static bool          s_verbose = true;
-static lv_indev_t*   s_indev   = nullptr;
-static uint8_t       s_rot     = 0;    // default: orientation matches LVGL logical coordinates
-static uint16_t      s_w       = 800;  // Updated at init from LVGL display
-static uint16_t      s_h       = 1280; // Updated at init from LVGL display
-static lv_disp_t*    s_disp    = nullptr;
+// Portrait dashboards for this board have historically required a 90° swap/invert
+// combo (rotation=1 in the working snippet). Let users override via a macro but
+// keep the proven mapping by default.
+#ifndef TOUCH_DEFAULT_ROTATION
+#  define TOUCH_DEFAULT_ROTATION 1
+#endif
+
+static bool          s_verbose   = true;
+static lv_indev_t*   s_indev     = nullptr;
+static uint8_t       s_rot       = TOUCH_DEFAULT_ROTATION;
+static uint16_t      s_w         = 800;  // Updated at init from LVGL display
+static uint16_t      s_h         = 1280; // Updated at init from LVGL display
+static lv_disp_t*    s_disp      = nullptr;
 static lv_obj_t*     s_touch_dot = nullptr;
 
 // Construct with required pins (your header shows this ctor signature)
@@ -95,10 +102,27 @@ static void touch_read_cb(lv_indev_drv_t* indev, lv_indev_data_t* data) {
   uint16_t rx = 0, ry = 0;
   bool pressed = s_touch.getTouch(&rx, &ry);  // vendor API: returns true while touching
 
-  // Clamp to LVGL logical bounds (s_touch already applies rotation internally)
+  // Apply the same transform sequence that worked in the earlier snippet.
   uint16_t lx = rx, ly = ry;
+
+#if TOUCH_SWAP_XY
+  {
+    uint16_t t = lx;
+    lx         = ly;
+    ly         = t;
+  }
+#endif
+
+  // Clamp to LVGL logical bounds (s_touch already applies rotation internally)
   if (lx >= s_w) lx = s_w ? (s_w - 1) : 0;
   if (ly >= s_h) ly = s_h ? (s_h - 1) : 0;
+
+#if TOUCH_INVERT_X
+  lx = (s_w > 0) ? (s_w - 1 - lx) : lx;
+#endif
+#if TOUCH_INVERT_Y
+  ly = (s_h > 0) ? (s_h - 1 - ly) : ly;
+#endif
 
   if (pressed) {
     last_x = lx;
@@ -153,8 +177,8 @@ bool touch_init_and_register(lv_disp_t* disp) {
   Serial.printf("[touch] begin(sda=%d scl=%d rst=%d int=%d)\n", TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
   s_touch.begin();
 
-  // Start with the panel's natural orientation. Adjust in setup() if required.
-  touch_set_rotation(0);
+  // Start with the orientation that matched the working example (can be overridden).
+  touch_set_rotation(TOUCH_DEFAULT_ROTATION);
 
   // Register LVGL input device
   lv_indev_drv_t drv;
