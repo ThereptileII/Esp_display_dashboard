@@ -99,7 +99,8 @@ esp_err_t esp_lcd_new_panel_jd9365(const esp_lcd_panel_io_handle_t io, const esp
     {							\
     	.virtual_channel = 0,                            \
         .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,     \
-        .dpi_clock_freq_mhz = 60,                        \
+        /* 70 MHz pixel clock yields ~61 Hz with current porch timings */ \
+        .dpi_clock_freq_mhz = 70,                        \
         .pixel_format = px_format,                       \
         .num_fbs = 1,                                    \
         .video_timing = {                                \
