@@ -17,56 +17,27 @@
 extern "C" {
 #endif
 
-/**
- * @brief LCD panel initialization commands.
- *
- */
 typedef struct {
-    int cmd;                /*<! The specific LCD command */
-    const void *data;       /*<! Buffer that holds the command specific data */
-    size_t data_bytes;      /*<! Size of `data` in memory, in bytes */
-    unsigned int delay_ms;  /*<! Delay in milliseconds after this command */
+    int cmd;
+    const void *data;
+    size_t data_bytes;
+    unsigned int delay_ms;
 } jd9365_lcd_init_cmd_t;
 
-/**
- * @brief LCD panel vendor configuration.
- *
- * @note  This structure needs to be passed to the `vendor_config` field in `esp_lcd_panel_dev_config_t`.
- *
- */
 typedef struct {
-    const jd9365_lcd_init_cmd_t *init_cmds;         /*!< Pointer to initialization commands array. Set to NULL if using default commands.
-                                                     *   The array should be declared as `static const` and positioned outside the function.
-                                                     *   Please refer to `vendor_specific_init_default` in source file.
-                                                     */
-    uint16_t init_cmds_size;                        /*<! Number of commands in above array */
+    const jd9365_lcd_init_cmd_t *init_cmds;
+    uint16_t init_cmds_size;
     struct {
-        esp_lcd_dsi_bus_handle_t dsi_bus;               /*!< MIPI-DSI bus configuration */
-        const esp_lcd_dpi_panel_config_t *dpi_config;   /*!< MIPI-DPI panel configuration */
-        uint8_t  lane_num;                              /*!< Number of MIPI-DSI lanes */
+        esp_lcd_dsi_bus_handle_t dsi_bus;
+        const esp_lcd_dpi_panel_config_t *dpi_config;
+        uint8_t lane_num;
     } mipi_config;
 } jd9365_vendor_config_t;
 
-/**
- * @brief Create LCD panel for model JD9365
- *
- * @note  Vendor specific initialization can be different between manufacturers, should consult the LCD supplier for initialization sequence code.
- *
- * @param[in]  io LCD panel IO handle
- * @param[in]  panel_dev_config General panel device configuration
- * @param[out] ret_panel Returned LCD panel handle
- * @return
- *      - ESP_ERR_INVALID_ARG   if parameter is invalid
- *      - ESP_OK                on success
- *      - Otherwise             on fail
- */
-esp_err_t esp_lcd_new_panel_jd9365(const esp_lcd_panel_io_handle_t io, const esp_lcd_panel_dev_config_t *panel_dev_config,
+esp_err_t esp_lcd_new_panel_jd9365(const esp_lcd_panel_io_handle_t io,
+                                   const esp_lcd_panel_dev_config_t *panel_dev_config,
                                    esp_lcd_panel_handle_t *ret_panel);
 
-/**
- * @brief MIPI-DSI bus configuration structure
- *
- */
 #define JD9365_PANEL_BUS_DSI_2CH_CONFIG()                \
     {                                                    \
         .bus_id = 0,                                     \
@@ -75,10 +46,6 @@ esp_err_t esp_lcd_new_panel_jd9365(const esp_lcd_panel_io_handle_t io, const esp
         .lane_bit_rate_mbps = 1500,                      \
     }
 
-/**
- * @brief MIPI-DBI panel IO configuration structure
- *
- */
 #define JD9365_PANEL_IO_DBI_CONFIG()  \
     {                                 \
         .virtual_channel = 0,         \
@@ -86,36 +53,63 @@ esp_err_t esp_lcd_new_panel_jd9365(const esp_lcd_panel_io_handle_t io, const esp
         .lcd_param_bits = 8,          \
     }
 
-/**
- * @brief MIPI DPI configuration structure
- *
- * @note  refresh_rate = (dpi_clock_freq_mhz * 1000000) / (h_res + hsync_pulse_width + hsync_back_porch + hsync_front_porch)
- *                                                      / (v_res + vsync_pulse_width + vsync_back_porch + vsync_front_porch)
- *
- * @param[in] px_format Pixel format of the panel
- *
- */
+#define JD9365_TIMING_PROFILE_DEFAULT_60HZ 0
+#define JD9365_TIMING_PROFILE_COMPAT_STABLE 1
+
+#ifndef JD9365_TIMING_PROFILE
+#define JD9365_TIMING_PROFILE JD9365_TIMING_PROFILE_DEFAULT_60HZ
+#endif
+
 #define JD9365_800_1280_PANEL_60HZ_DPI_CONFIG(px_format) \
-    {							\
-    	.virtual_channel = 0,                            \
-        .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,     \
-        .dpi_clock_freq_mhz = 60,                        \
-        .pixel_format = px_format,                       \
-        .num_fbs = 1,                                    \
-        .video_timing = {                                \
-            .h_size = 800,                               \
-            .v_size = 1280,                              \
-            .hsync_pulse_width = 20,   \
-            .hsync_back_porch = 20,                  \
-            .hsync_front_porch = 40,                     \
-            .vsync_pulse_width = 4,  				\
-            .vsync_back_porch = 8,                       \
-            .vsync_front_porch = 20,                     \
-        },                                               \
-        .flags ={					\
-        	.use_dma2d = true,			\
-        	},                         \
+    {                                                     \
+        .virtual_channel = 0,                             \
+        .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,      \
+        .dpi_clock_freq_mhz = 60,                         \
+        .pixel_format = px_format,                        \
+        .num_fbs = 1,                                     \
+        .video_timing = {                                 \
+            .h_size = 800,                                \
+            .v_size = 1280,                               \
+            .hsync_pulse_width = 20,                      \
+            .hsync_back_porch = 20,                       \
+            .hsync_front_porch = 40,                      \
+            .vsync_pulse_width = 4,                       \
+            .vsync_back_porch = 8,                        \
+            .vsync_front_porch = 20,                      \
+        },                                                \
+        .flags = {                                        \
+            .use_dma2d = true,                            \
+        },                                                \
     }
+
+#define JD9365_800_1280_PANEL_COMPAT_STABLE_DPI_CONFIG(px_format) \
+    {                                                              \
+        .virtual_channel = 0,                                      \
+        .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,               \
+        .dpi_clock_freq_mhz = 52,                                  \
+        .pixel_format = px_format,                                 \
+        .num_fbs = 1,                                              \
+        .video_timing = {                                          \
+            .h_size = 800,                                         \
+            .v_size = 1280,                                        \
+            .hsync_pulse_width = 24,                               \
+            .hsync_back_porch = 32,                                \
+            .hsync_front_porch = 56,                               \
+            .vsync_pulse_width = 6,                                \
+            .vsync_back_porch = 14,                                \
+            .vsync_front_porch = 26,                               \
+        },                                                         \
+        .flags = {                                                 \
+            .use_dma2d = true,                                     \
+        },                                                         \
+    }
+
+#if JD9365_TIMING_PROFILE == JD9365_TIMING_PROFILE_COMPAT_STABLE
+#define JD9365_ACTIVE_DPI_CONFIG(px_format) JD9365_800_1280_PANEL_COMPAT_STABLE_DPI_CONFIG(px_format)
+#else
+#define JD9365_ACTIVE_DPI_CONFIG(px_format) JD9365_800_1280_PANEL_60HZ_DPI_CONFIG(px_format)
+#endif
+
 #endif
 
 #ifdef __cplusplus

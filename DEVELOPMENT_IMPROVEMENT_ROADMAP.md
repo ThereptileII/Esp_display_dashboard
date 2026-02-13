@@ -2,6 +2,18 @@
 
 This document complements `HARDWARE_JC8012P4A1C_I_W_Y.md` by turning key improvement ideas into concrete development paths.
 
+## Implementation status (current branch)
+
+- ✅ Partial refresh + area-based rotation implemented in display flush path.
+- ✅ Runtime logging policy with levels added and hot-path logging gated.
+- ✅ Unified orientation header added and consumed by display + touch.
+- ✅ Memory strategy hardened with fallback draw buffer path and startup reporting.
+- ✅ JD9365 timing profiles extracted and selectable by compile-time flag.
+- ✅ Font/UI asset pipeline checklist documented.
+- ⏳ ESP32-C6 integration remains optional and feature-driven.
+
+---
+
 ## Scope and assumptions
 
 - Hardware target: ESP32-P4 + JD9365 (MIPI-DSI) + GSL3680 touch.

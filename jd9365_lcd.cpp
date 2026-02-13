@@ -87,7 +87,12 @@ void jd9365_lcd::begin()
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_dbi(mipi_dsi_bus, &dbi_config, &io_handle));
 
     // 创建JD9365控制面板
-    esp_lcd_dpi_panel_config_t dpi_config = JD9365_800_1280_PANEL_60HZ_DPI_CONFIG(MIPI_DPI_PX_FORMAT);
+    esp_lcd_dpi_panel_config_t dpi_config = JD9365_ACTIVE_DPI_CONFIG(MIPI_DPI_PX_FORMAT);
+#if JD9365_TIMING_PROFILE == JD9365_TIMING_PROFILE_COMPAT_STABLE
+    ESP_LOGW(TAG, "Using JD9365 timing profile: compat_stable");
+#else
+    ESP_LOGI(TAG, "Using JD9365 timing profile: default_60hz");
+#endif
 
     jd9365_vendor_config_t vendor_config = {
         .mipi_config = {

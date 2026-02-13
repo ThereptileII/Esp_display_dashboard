@@ -57,9 +57,9 @@ Current architecture:
 
 - LVGL logical canvas: **1280x800** (landscape)
 - Physical panel: **800x1280** (portrait)
-- `debug_display.cpp` rotates the flushed frame **90° CCW** into a second buffer and sends full-frame data to the panel.
+- `debug_display.cpp` rotates flushed LVGL invalid areas **90° CCW** and updates only the mapped panel rectangle.
+- Orientation policy is centralized in `orientation_config.h` for both display and touch.
 
-This is correct for the mounted panel orientation, but expensive.
 
 ## 4) Touch path (what is hardware-specific)
 
@@ -88,9 +88,9 @@ Total framebuffer working set is roughly **6.1 MB**, so PSRAM is effectively req
 
 Also note:
 
-- `drv.full_refresh = 1` forces full-frame flushes even for tiny UI changes.
-- Software rotation loops over every pixel per frame.
-- Per-flush serial logging is enabled, which can materially affect frame pacing.
+- Partial invalidation is enabled (`drv.full_refresh = 0`).
+- Rotation work now scales with invalid area size.
+- Hot-path logging is behind level checks from `logging_policy.h`.
 
 ## 6) Font assets and their implications
 
