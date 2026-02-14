@@ -1,6 +1,7 @@
 #include "ui.h"
 #include "fonts.h"
 #include "debug_config.h"
+#include <cstdio>
 
 // ---------- Font selection (no external fonts required) ----------
 #if defined(USE_ORBITRON) || defined(USE_ORBITRON_FONTS)
@@ -43,6 +44,10 @@ static lv_obj_t* chart_rpm = nullptr;
 static lv_chart_series_t* chart_series_rpm = nullptr;
 static lv_obj_t* lbl_axis_x = nullptr;
 static lv_obj_t* lbl_axis_y = nullptr;
+static lv_obj_t* lbl_stat_current = nullptr;
+static lv_obj_t* lbl_stat_avg = nullptr;
+static lv_obj_t* lbl_stat_max = nullptr;
+static lv_obj_t* lbl_stat_min = nullptr;
 
 // ---- Forward declarations ----
 static void show_rpm_detail(bool show);
@@ -54,6 +59,11 @@ static lv_obj_t* make_chip_button(lv_obj_t* parent,
                                  lv_style_t* base_style = &st_chip,
                                  lv_style_t* checked_style = &st_chip_checked,
                                  bool checkable = true);
+static lv_obj_t* make_detail_stat_tile(lv_obj_t* parent,
+                                       const char* caption,
+                                       const char* value,
+                                       lv_color_t value_color,
+                                       lv_obj_t** out_value_label = nullptr);
 
 // ---- Page state (single page) ----
 static int s_current_page = 0; // 0 .. ui_page_count()-1
@@ -350,13 +360,41 @@ static void set_rpm_resolution(int idx)
     }
 
     lv_chart_set_point_count(chart_rpm, cnt);
+
+    int sum = 0;
+    lv_coord_t min_v = data[0];
+    lv_coord_t max_v = data[0];
     for (uint16_t i = 0; i < cnt; ++i) {
         lv_chart_set_value_by_id(chart_rpm, chart_series_rpm, i, data[i]);
+        sum += data[i];
+        if (data[i] < min_v) min_v = data[i];
+        if (data[i] > max_v) max_v = data[i];
     }
     lv_chart_refresh(chart_rpm);
 
     if (lbl_axis_x) {
         lv_label_set_text(lbl_axis_x, time_scale);
+    }
+
+    const lv_coord_t current_v = data[cnt - 1];
+    const lv_coord_t avg_v = (lv_coord_t)(sum / (int)cnt);
+    char buf[24];
+
+    if (lbl_stat_current) {
+        std::snprintf(buf, sizeof(buf), "%d rpm", (int)current_v);
+        lv_label_set_text(lbl_stat_current, buf);
+    }
+    if (lbl_stat_avg) {
+        std::snprintf(buf, sizeof(buf), "%d rpm", (int)avg_v);
+        lv_label_set_text(lbl_stat_avg, buf);
+    }
+    if (lbl_stat_max) {
+        std::snprintf(buf, sizeof(buf), "%d rpm", (int)max_v);
+        lv_label_set_text(lbl_stat_max, buf);
+    }
+    if (lbl_stat_min) {
+        std::snprintf(buf, sizeof(buf), "%d rpm", (int)min_v);
+        lv_label_set_text(lbl_stat_min, buf);
     }
 }
 
@@ -384,13 +422,46 @@ static lv_obj_t* make_chip_button(lv_obj_t* parent,
     return btn;
 }
 
+static lv_obj_t* make_detail_stat_tile(lv_obj_t* parent,
+                                       const char* caption,
+                                       const char* value,
+                                       lv_color_t value_color,
+                                       lv_obj_t** out_value_label)
+{
+    lv_obj_t* tile = lv_obj_create(parent);
+    lv_obj_remove_style_all(tile);
+    lv_obj_add_style(tile, &st_card, 0);
+    lv_obj_set_height(tile, LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_top(tile, 8, 0);
+    lv_obj_set_style_pad_bottom(tile, 10, 0);
+
+    lv_obj_t* lbl_caption = lv_label_create(tile);
+    lv_obj_add_style(lbl_caption, &st_caption, 0);
+    lv_label_set_text(lbl_caption, caption);
+    lv_label_set_long_mode(lbl_caption, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(lbl_caption, LV_PCT(100));
+    lv_obj_align(lbl_caption, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    lv_obj_t* lbl_value = lv_label_create(tile);
+    lv_obj_add_style(lbl_value, &st_value_medium, 0);
+    lv_obj_set_style_text_color(lbl_value, value_color, 0);
+    lv_label_set_text(lbl_value, value);
+    lv_label_set_long_mode(lbl_value, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(lbl_value, LV_PCT(100));
+    lv_obj_align(lbl_value, LV_ALIGN_TOP_LEFT, 0, 20);
+
+    if (out_value_label) *out_value_label = lbl_value;
+    return tile;
+}
+
 static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
 {
     const lv_coord_t min_side = (w < h) ? w : h;
-    const lv_coord_t detail_pad = (min_side <= 320) ? 8 : 12;
-    const lv_coord_t chart_pad = (min_side <= 320) ? 8 : 12;
-    const lv_coord_t chart_inner_pad = (min_side <= 320) ? 10 : 20;
-    const uint8_t axis_label_space = (min_side <= 320) ? 28 : 48;
+    const lv_coord_t detail_pad = (min_side <= 320) ? 6 : 10;
+    const lv_coord_t section_gap = (min_side <= 320) ? 6 : 10;
+    const lv_coord_t chart_inner_pad = (min_side <= 320) ? 10 : 18;
+    const uint8_t axis_label_space = (min_side <= 320) ? 28 : 42;
+    const bool portrait = (w < h);
 
     cont_rpm_detail = lv_obj_create(parent);
     lv_obj_remove_style_all(cont_rpm_detail);
@@ -400,87 +471,110 @@ static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_set_layout(cont_rpm_detail, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(cont_rpm_detail, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_all(cont_rpm_detail, detail_pad, 0);
-    lv_obj_set_style_pad_row(cont_rpm_detail, detail_pad, 0);
+    lv_obj_set_style_pad_row(cont_rpm_detail, section_gap, 0);
     lv_obj_add_flag(cont_rpm_detail, LV_OBJ_FLAG_HIDDEN);
 
-    // Header bar
+    // Top component bar: back + H1 + options (single row)
     lv_obj_t* header = lv_obj_create(cont_rpm_detail);
     lv_obj_remove_style_all(header);
-    lv_obj_add_style(header, &st_navbar, 0);
+    lv_obj_add_style(header, &st_card, 0);
     lv_obj_set_width(header, LV_PCT(100));
     lv_obj_set_height(header, LV_SIZE_CONTENT);
-    lv_obj_set_style_min_height(header, 56, 0);
-    lv_obj_set_style_pad_left(header, detail_pad, 0);
-    lv_obj_set_style_pad_right(header, detail_pad, 0);
-    lv_obj_set_style_pad_top(header, 8, 0);
-    lv_obj_set_style_pad_bottom(header, 8, 0);
-    lv_obj_set_style_pad_column(header, 10, 0);
-    lv_obj_set_style_pad_row(header, 8, 0);
+    lv_obj_set_style_pad_all(header, 6, 0);
+    lv_obj_set_style_radius(header, 12, 0);
     lv_obj_set_layout(header, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(header, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(header, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(header, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(header, 8, 0);
 
-    lv_obj_t* title_row = lv_obj_create(header);
-    lv_obj_remove_style_all(title_row);
-    lv_obj_set_width(title_row, LV_PCT(100));
-    lv_obj_set_layout(title_row, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(title_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(title_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(title_row, 8, 0);
-
-    btn_back = make_chip_button(title_row, "← Back", [](lv_event_t* e) {
+    btn_back = make_chip_button(header, "← Back", [](lv_event_t* e) {
         LV_UNUSED(e);
         show_rpm_detail(false);
     }, nullptr, &st_chip_ghost, nullptr, false);
+    lv_obj_set_style_pad_left(btn_back, 10, 0);
+    lv_obj_set_style_pad_right(btn_back, 10, 0);
+    lv_obj_set_style_pad_top(btn_back, 6, 0);
+    lv_obj_set_style_pad_bottom(btn_back, 6, 0);
 
-    lv_obj_t* lbl_title = lv_label_create(title_row);
-    lv_obj_add_style(lbl_title, &st_label, 0);
+    lv_obj_t* lbl_title = lv_label_create(header);
+    lv_obj_add_style(lbl_title, &st_value_medium, 0);
     lv_label_set_text(lbl_title, "RPM Monitor");
     lv_label_set_long_mode(lbl_title, LV_LABEL_LONG_CLIP);
     lv_obj_set_flex_grow(lbl_title, 1);
 
     lv_obj_t* res_group = lv_obj_create(header);
     lv_obj_remove_style_all(res_group);
-    lv_obj_set_style_pad_row(res_group, 6, 0);
-    lv_obj_set_style_pad_column(res_group, 8, 0);
     lv_obj_set_layout(res_group, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(res_group, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_width(res_group, LV_PCT(100));
+    lv_obj_set_flex_flow(res_group, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(res_group, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(res_group, 6, 0);
 
-    btn_resolutions[0] = make_chip_button(res_group, "6h", [](lv_event_t* e) {
-        set_rpm_resolution(0);
-    }, nullptr);
-    btn_resolutions[1] = make_chip_button(res_group, "12h", [](lv_event_t* e) {
-        set_rpm_resolution(1);
-    }, nullptr);
-    btn_resolutions[2] = make_chip_button(res_group, "24h", [](lv_event_t* e) {
-        set_rpm_resolution(2);
-    }, nullptr);
+    btn_resolutions[0] = make_chip_button(res_group, "6h", [](lv_event_t* e) { set_rpm_resolution(0); }, nullptr);
+    btn_resolutions[1] = make_chip_button(res_group, "12h", [](lv_event_t* e) { set_rpm_resolution(1); }, nullptr);
+    btn_resolutions[2] = make_chip_button(res_group, "24h", [](lv_event_t* e) { set_rpm_resolution(2); }, nullptr);
 
-    // Chart card
+    for (int i = 0; i < 3; ++i) {
+        if (!btn_resolutions[i]) continue;
+        lv_obj_set_style_pad_left(btn_resolutions[i], 10, 0);
+        lv_obj_set_style_pad_right(btn_resolutions[i], 10, 0);
+        lv_obj_set_style_pad_top(btn_resolutions[i], 6, 0);
+        lv_obj_set_style_pad_bottom(btn_resolutions[i], 6, 0);
+    }
+
+    // Component row: four stat tiles under header
+    lv_obj_t* stats_row = lv_obj_create(cont_rpm_detail);
+    lv_obj_remove_style_all(stats_row);
+    lv_obj_set_width(stats_row, LV_PCT(100));
+    lv_obj_set_height(stats_row, LV_SIZE_CONTENT);
+    lv_obj_set_layout(stats_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(stats_row, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(stats_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_row(stats_row, section_gap, 0);
+    lv_obj_set_style_pad_column(stats_row, section_gap, 0);
+
+    const lv_coord_t stat_w = portrait ? LV_PCT(48) : LV_PCT(24);
+    lv_obj_t* st_cur = make_detail_stat_tile(stats_row, "CURRENT", "1350 rpm", COL_GREEN, &lbl_stat_current);
+    lv_obj_t* st_avg = make_detail_stat_tile(stats_row, "AVERAGE", "1362 rpm", COL_WHITE, &lbl_stat_avg);
+    lv_obj_t* st_max = make_detail_stat_tile(stats_row, "MAXIMUM", "1520 rpm", COL_CYAN, &lbl_stat_max);
+    lv_obj_t* st_min = make_detail_stat_tile(stats_row, "MINIMUM", "1200 rpm", COL_ORANGE, &lbl_stat_min);
+    lv_obj_set_width(st_cur, stat_w);
+    lv_obj_set_width(st_avg, stat_w);
+    lv_obj_set_width(st_max, stat_w);
+    lv_obj_set_width(st_min, stat_w);
+
+    // Graph component
     lv_obj_t* chart_card = lv_obj_create(cont_rpm_detail);
     lv_obj_remove_style_all(chart_card);
     lv_obj_add_style(chart_card, &st_chart_bg, 0);
     lv_obj_set_width(chart_card, LV_PCT(100));
     lv_obj_set_flex_grow(chart_card, 1);
-    lv_obj_set_style_pad_all(chart_card, chart_pad, 0);
+    lv_obj_set_style_pad_all(chart_card, detail_pad, 0);
+    lv_obj_set_layout(chart_card, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(chart_card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(chart_card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_row(chart_card, 4, 0);
+
+    lv_obj_t* lbl_chart_title = lv_label_create(chart_card);
+    lv_obj_add_style(lbl_chart_title, &st_label, 0);
+    lv_label_set_text(lbl_chart_title, "RPM OVER TIME (6h)");
+    lv_obj_set_width(lbl_chart_title, LV_PCT(100));
+    lv_label_set_long_mode(lbl_chart_title, LV_LABEL_LONG_CLIP);
 
     chart_rpm = lv_chart_create(chart_card);
-    lv_obj_set_size(chart_rpm, LV_PCT(100), LV_PCT(100));
-    lv_obj_center(chart_rpm);
+    lv_obj_set_width(chart_rpm, LV_PCT(100));
+    lv_obj_set_flex_grow(chart_rpm, 1);
     lv_chart_set_type(chart_rpm, LV_CHART_TYPE_LINE);
     lv_chart_set_point_count(chart_rpm, 10);
-    lv_chart_set_div_line_count(chart_rpm, 5, 7);
+    lv_chart_set_div_line_count(chart_rpm, 4, 6);
     lv_chart_set_range(chart_rpm, LV_CHART_AXIS_PRIMARY_Y, 1200, 1600);
     lv_obj_set_style_bg_color(chart_rpm, COL_BG_CARD, 0);
     lv_obj_set_style_bg_opa(chart_rpm, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(chart_rpm, 0, 0);
     lv_obj_set_style_pad_all(chart_rpm, chart_inner_pad, 0);
-    lv_obj_set_style_line_width(chart_rpm, 4, LV_PART_ITEMS);
+    lv_obj_set_style_line_width(chart_rpm, 3, LV_PART_ITEMS);
     lv_obj_set_style_line_color(chart_rpm, COL_GREEN, LV_PART_ITEMS);
     lv_obj_set_style_size(chart_rpm, 0, LV_PART_INDICATOR | LV_STATE_DEFAULT);
     lv_chart_set_update_mode(chart_rpm, LV_CHART_UPDATE_MODE_SHIFT);
-    lv_chart_set_div_line_count(chart_rpm, 4, 6);
     lv_obj_set_style_line_color(chart_rpm, COL_GRAPH_GRID, LV_PART_MAIN);
     lv_obj_set_style_line_opa(chart_rpm, LV_OPA_30, LV_PART_MAIN);
     lv_chart_set_axis_tick(chart_rpm, LV_CHART_AXIS_PRIMARY_X, 8, 4, 6, 1, true, axis_label_space);
@@ -492,12 +586,12 @@ static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_add_style(lbl_axis_y, &st_label, 0);
     lv_obj_set_style_text_color(lbl_axis_y, COL_MUTED_TEXT, 0);
     lv_label_set_text(lbl_axis_y, "RPM");
-    lv_obj_align(lbl_axis_y, LV_ALIGN_TOP_LEFT, 4, 4);
+    lv_obj_align(lbl_axis_y, LV_ALIGN_TOP_LEFT, 4, 20);
 
     lbl_axis_x = lv_label_create(chart_card);
     lv_obj_add_style(lbl_axis_x, &st_label, 0);
     lv_obj_set_style_text_color(lbl_axis_x, COL_MUTED_TEXT, 0);
-    lv_label_set_text(lbl_axis_x, "Time");
+    lv_label_set_text(lbl_axis_x, "Time (6h)");
     lv_obj_align(lbl_axis_x, LV_ALIGN_BOTTOM_RIGHT, -4, -4);
 
     chart_series_rpm = lv_chart_add_series(chart_rpm, COL_GREEN, LV_CHART_AXIS_PRIMARY_Y);
