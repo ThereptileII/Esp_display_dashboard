@@ -27,7 +27,7 @@ static const lv_color_t COL_GRAPH_GRID = lv_color_hex(0x202633);
 
 // ---- Styles ----
 static lv_style_t st_screen, st_navbar, st_card, st_caption, st_value_big, st_value_medium, st_label;
-static lv_style_t st_chip, st_chip_checked, st_chip_ghost, st_chart_bg, st_tabstrip;
+static lv_style_t st_chip, st_chip_checked, st_chip_ghost, st_chart_bg;
 
 static lv_coord_t g_screen_w = 0;
 static lv_coord_t g_screen_h = 0;
@@ -125,13 +125,6 @@ static void apply_styles()
     lv_style_set_pad_bottom(&st_navbar, 12);
     lv_style_set_pad_column(&st_navbar, 12);
 
-    lv_style_init(&st_tabstrip);
-    lv_style_set_bg_color(&st_tabstrip, COL_BG_CARD);
-    lv_style_set_bg_opa(&st_tabstrip, LV_OPA_COVER);
-    lv_style_set_radius(&st_tabstrip, 12);
-    lv_style_set_pad_all(&st_tabstrip, 8);
-    lv_style_set_pad_column(&st_tabstrip, 8);
-
     lv_style_init(&st_card);
     lv_style_set_bg_color(&st_card, COL_BG_CARD);
     lv_style_set_bg_opa(&st_card, LV_OPA_COVER);
@@ -209,9 +202,8 @@ static void build_navbar(lv_obj_t* parent, lv_coord_t w)
     lv_obj_set_height(cont_navbar, LV_SIZE_CONTENT);
     lv_obj_set_style_min_height(cont_navbar, 56, 0);
     lv_obj_set_layout(cont_navbar, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(cont_navbar, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(cont_navbar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_row(cont_navbar, 8, 0);
+    lv_obj_set_flex_flow(cont_navbar, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(cont_navbar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     lv_obj_t* lbl_title = lv_label_create(cont_navbar);
     lv_obj_add_style(lbl_title, &st_value_medium, 0);
@@ -219,27 +211,6 @@ static void build_navbar(lv_obj_t* parent, lv_coord_t w)
     lv_label_set_long_mode(lbl_title, LV_LABEL_LONG_CLIP);
     lv_obj_set_width(lbl_title, LV_PCT(100));
 
-    lv_obj_t* tabs = lv_obj_create(cont_navbar);
-    lv_obj_remove_style_all(tabs);
-    lv_obj_add_style(tabs, &st_tabstrip, 0);
-    lv_obj_set_width(tabs, LV_PCT(100));
-    lv_obj_set_layout(tabs, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(tabs, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(tabs, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    auto add_tab = [tabs](const char* label, bool checked) {
-        lv_obj_t* tab = make_chip_button(tabs, label, [](lv_event_t* e) {
-            LV_UNUSED(e);
-        }, nullptr, &st_chip, &st_chip_checked, true);
-        if (checked) {
-            lv_obj_add_state(tab, LV_STATE_CHECKED);
-        }
-        return tab;
-    };
-
-    add_tab("Overview", true);
-    add_tab("Speed", false);
-    add_tab("Voltage", false);
 }
 
 static void build_grid(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
@@ -298,10 +269,17 @@ static void build_grid(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_set_style_text_color(badge, COL_GREEN, 0);
     lv_obj_align(badge, LV_ALIGN_BOTTOM_RIGHT, -12, -12);
 
-    // Page-level touch handling for detail navigation
+    // Direct card touch handling (primary interaction)
+    lv_obj_add_flag(c_rpm, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(c_rpm, [](lv_event_t* e) {
+        LV_UNUSED(e);
+        show_rpm_detail(true);
+    }, LV_EVENT_CLICKED, nullptr);
+
+    // Page-level touch fallback (kept for integration resilience)
     lv_obj_add_flag(cont_grid, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(cont_grid, [](lv_event_t* e) {
-        lv_indev_t* indev = lv_indev_get_act();
+        lv_indev_t* indev = lv_event_get_indev(e);
         if (!indev || !card_rpm) return;
 
         lv_point_t p;
@@ -312,7 +290,7 @@ static void build_grid(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
         if (p.x >= rpm_area.x1 && p.x <= rpm_area.x2 && p.y >= rpm_area.y1 && p.y <= rpm_area.y2) {
             show_rpm_detail(true);
         }
-    }, LV_EVENT_CLICKED, nullptr);
+    }, LV_EVENT_RELEASED, nullptr);
 }
 
 static void show_rpm_detail(bool show)
