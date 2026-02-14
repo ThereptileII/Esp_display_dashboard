@@ -35,7 +35,7 @@ static lv_disp_t* s_disp          = nullptr;
 static lv_disp_draw_buf_t s_draw;
 static lv_color_t* s_buf1         = nullptr;
 static lv_color_t* s_buf2         = nullptr;
-static lv_color_t* s_rotated_full = nullptr;   // Full-screen rotated frame (panel orientation)
+static lv_color_t* s_rotated_area = nullptr;   // Compact rotated area buffer (max logical area)
 
 // LVGL logical framebuffer is landscape (1280x800); panel is portrait
 // (800x1280). We rotate 90° counter-clockwise in the flush callback.
@@ -55,13 +55,13 @@ static esp_err_t draw_bitmap_retry(int x1, int y1, int x2, int y2, const void* d
   if (!panel_handle) return ESP_ERR_INVALID_STATE;
 
   // Try a few times; if panel reports "previous draw not finished", yield briefly.
-  for (int attempt = 0; attempt < 12; ++attempt) {
+  for (int attempt = 0; attempt < 6; ++attempt) {
     esp_err_t err = esp_lcd_panel_draw_bitmap(panel_handle, x1, y1, x2, y2, data);
     if (err == ESP_OK) return ESP_OK;
     if (err == ESP_ERR_INVALID_STATE) {
       // Prior draw still in progress – give DPI driver time to catch up
       // Use a short delay; larger stripes need a bit more time.
-      delay(2);     // yields to RTOS; ~2 ms works well with 60–120 line stripes
+      delay(0);     // yield without adding millisecond-scale latency in hot path
       continue;
     }
     // Any other error: bubble it up
@@ -163,8 +163,9 @@ bool dbg_display_init(void) {
     }
   }
 
-  // Rotate the full LVGL frame (landscape) into panel orientation (portrait) in one shot
-  s_rotated_full = (lv_color_t*)heap_caps_malloc(PANEL_W * PANEL_H * sizeof(lv_color_t),
+  // Compact rotated-area buffer (worst-case: full logical frame area).
+  // Stored linearly so one panel draw call can push the whole area.
+  s_rotated_area = (lv_color_t*)heap_caps_malloc(LOGICAL_W * LOGICAL_H * sizeof(lv_color_t),
                                                  MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
 
   size_t int_free  = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
@@ -173,12 +174,12 @@ bool dbg_display_init(void) {
   size_t dma_big   = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
   size_t psram_free= heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
 
-  if (!(s_buf1 && s_rotated_full)) {
+  if (!(s_buf1 && s_rotated_area)) {
     Serial.println(F("[alloc][FATAL] LVGL buffers could not be allocated"));
     return false;
   }
   if (s_buf2) {
-    DBG_LOGI("[alloc] LVGL PSRAM double buffers OK: %d bytes each, rotated frame=%d bytes",
+    DBG_LOGI("[alloc] LVGL PSRAM double buffers OK: %d bytes each, rotated-area scratch=%d bytes",
              (int)(buf_pixels * sizeof(lv_color_t)),
              (int)(PANEL_W * PANEL_H * sizeof(lv_color_t)));
     lv_disp_draw_buf_init(&s_draw, s_buf1, s_buf2, buf_pixels);
@@ -205,7 +206,7 @@ static void my_flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* color_p
   if (!panel_handle) { lv_disp_flush_ready(drv); return; }
 
   const int x1 = a->x1, y1 = a->y1, x2 = a->x2, y2 = a->y2;
-  if (x2 < x1 || y2 < y1 || !s_rotated_full) { lv_disp_flush_ready(drv); return; }
+  if (x2 < x1 || y2 < y1 || !s_rotated_area) { lv_disp_flush_ready(drv); return; }
 
   const int src_w = (x2 - x1 + 1);  // LV logical width of the area
   const int src_h = (y2 - y1 + 1);  // LV logical height of the area
@@ -217,44 +218,40 @@ static void my_flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* color_p
   }
 
   // Rotate 90° CCW: (x, y) -> (y, LOGICAL_W - 1 - x)
-  const int dest_w = PANEL_W;             // panel width (portrait)
-
-  lv_color_t* dst = s_rotated_full;
-  for (int sy = 0; sy < src_h; ++sy) {
-    const lv_color_t* src_row = color_p + (sy * src_w);
-    for (int sx = 0; sx < src_w; ++sx) {
-      const int dx = y1 + sy;                 // LV y becomes panel x
-      const int dy = LOGICAL_W - 1 - (x1 + sx); // LV x becomes panel y (inverted)
-      dst[dy * dest_w + dx] = src_row[sx];
-    }
-  }
-
+  // For an LVGL area (src_w x src_h), the mapped panel rectangle is (out_w x out_h)
+  // where out_w=src_h and out_h=src_w.
   const int panel_x1 = y1;
   const int panel_y1 = LOGICAL_W - 1 - x2;
   const int panel_x2 = y2;
   const int panel_y2 = LOGICAL_W - 1 - x1;
-  const int out_w = panel_x2 - panel_x1 + 1;
-  const int out_h = panel_y2 - panel_y1 + 1;
+  const int out_w = src_h;
+  const int out_h = src_w;
   const size_t rotated_area_bytes = static_cast<size_t>(out_w) * out_h * sizeof(lv_color_t);
 
   uint32_t t0 = micros();
-  for (int row = panel_y1; row <= panel_y2; ++row) {
-    lv_color_t* row_ptr = &s_rotated_full[row * PANEL_W + panel_x1];
-    msync_c2m(row_ptr, out_w * sizeof(lv_color_t));
+
+  // Write the rotated region into a compact linear buffer so the panel can be
+  // updated in a single draw call.
+  lv_color_t* dst = s_rotated_area;
+  for (int sy = 0; sy < src_h; ++sy) {
+    const lv_color_t* src_row = color_p + (sy * src_w);
+    for (int sx = 0; sx < src_w; ++sx) {
+      const int out_x = sy;
+      const int out_y = src_w - 1 - sx;
+      dst[out_y * out_w + out_x] = src_row[sx];
+    }
   }
+
+  msync_c2m(dst, rotated_area_bytes);
 
   static uint32_t flush_count = 0;
   static uint32_t flush_total_us = 0;
   static uint32_t flush_max_us = 0;
 
-  esp_err_t draw_err = ESP_OK;
-  for (int row = panel_y1; row <= panel_y2; ++row) {
-    lv_color_t* row_ptr = &s_rotated_full[row * PANEL_W + panel_x1];
-    draw_err = draw_bitmap_retry(panel_x1, row, panel_x2 + 1, row + 1, row_ptr);
-    if (draw_err != ESP_OK) {
-      DBG_LOGW("[flush] draw row failed row=%d err=%d", row, (int)draw_err);
-      break;
-    }
+  const esp_err_t draw_err = draw_bitmap_retry(panel_x1, panel_y1, panel_x2 + 1, panel_y2 + 1, dst);
+  if (draw_err != ESP_OK) {
+    DBG_LOGW("[flush] draw area failed err=%d panel=(%d,%d)-(%d,%d)",
+             (int)draw_err, panel_x1, panel_y1, panel_x2, panel_y2);
   }
 
   const uint32_t elapsed = micros() - t0;
