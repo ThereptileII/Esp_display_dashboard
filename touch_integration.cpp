@@ -1,6 +1,8 @@
 #include "touch_integration.h"
 #include <Arduino.h>
 #include <lvgl.h>
+#include "orientation_config.h"
+#include "logging_policy.h"
 
 // Your vendor driver
 #include "gsl3680_touch.h"
@@ -52,27 +54,21 @@
 #endif
 // ----------------------------------------------------------------------
 
-// Default to the native, non-rotated coordinate system (0). If your panel is
-// physically mounted differently, override TOUCH_DEFAULT_ROTATION in
-// pins_config.h (0..3) to match the display’s LVGL rotation.
 #ifndef TOUCH_DEFAULT_ROTATION
 #  define TOUCH_DEFAULT_ROTATION 0
 #endif
 
-// The dashboard is rendered in landscape and rotated 90° CCW for the panel,
-// so map the touch matrix the same way (swap XY and mirror X). Override in
-// pins_config.h if your hardware is wired differently.
 #ifndef TOUCH_SWAP_XY
-#  define TOUCH_SWAP_XY 1
+#  define TOUCH_SWAP_XY ORIENTATION_TOUCH_SWAP_XY
 #endif
 #ifndef TOUCH_INVERT_X
-#  define TOUCH_INVERT_X 1
+#  define TOUCH_INVERT_X ORIENTATION_TOUCH_INVERT_X
 #endif
 #ifndef TOUCH_INVERT_Y
-#  define TOUCH_INVERT_Y 0
+#  define TOUCH_INVERT_Y ORIENTATION_TOUCH_INVERT_Y
 #endif
 
-static bool          s_verbose   = true;
+static bool          s_verbose   = false;
 static lv_indev_t*   s_indev     = nullptr;
 static uint8_t       s_rot       = TOUCH_DEFAULT_ROTATION;
 static uint16_t      s_w         = 1280; // Updated at init from LVGL display
@@ -88,7 +84,7 @@ void touch_set_verbose(bool v) { s_verbose = v; }
 void touch_set_rotation(uint8_t r) {
   s_rot = (r & 3);
   s_touch.set_rotation(s_rot);
-  if (s_verbose) Serial.printf("[touch] set_rotation(%u)\n", s_rot);
+  if (s_verbose) DBG_LOGT("[touch] set_rotation(%u)", s_rot);
 }
 
 static void ensure_touch_indicator() {
@@ -168,8 +164,8 @@ static void touch_read_cb(lv_indev_drv_t* indev, lv_indev_data_t* data) {
     static uint32_t last = 0;
     uint32_t now = millis();
     if (now - last > 150) {
-      Serial.printf("[touch] raw=(%u,%u) -> lv=(%u,%u) pressed=%d rot=%u\n",
-                    rx, ry, data->point.x, data->point.y, (int)pressed, s_rot);
+      DBG_LOGT("[touch] raw=(%u,%u) -> lv=(%u,%u) pressed=%d rot=%u",
+               rx, ry, data->point.x, data->point.y, (int)pressed, s_rot);
       last = now;
     }
   }
@@ -181,15 +177,15 @@ bool touch_init_and_register(lv_disp_t* disp) {
     return false;
   }
 
-  // Determine LVGL logical resolution (now matching the panel's 800x1280 portrait canvas)
+  // Determine LVGL logical resolution from the active display contract
   s_w = lv_disp_get_hor_res(disp);
   s_h = lv_disp_get_ver_res(disp);
-  Serial.printf("[touch] LVGL logical size: %ux%u\n", s_w, s_h);
+  DBG_LOGI("[touch] LVGL logical size: %ux%u", s_w, s_h);
 
   s_disp = disp;
 
   // Vendor init
-  Serial.printf("[touch] begin(sda=%d scl=%d rst=%d int=%d)\n", TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
+  DBG_LOGI("[touch] begin(sda=%d scl=%d rst=%d int=%d)", TP_I2C_SDA, TP_I2C_SCL, TP_RST, TP_INT);
   s_touch.begin();
 
   // Start with the orientation that matched the working example (can be overridden).
@@ -208,7 +204,7 @@ bool touch_init_and_register(lv_disp_t* disp) {
     return false;
   }
 
-  Serial.println("[touch] registered OK");
+  DBG_LOGI("[touch] registered OK");
   ensure_touch_indicator();
   return true;
 }
