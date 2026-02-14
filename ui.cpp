@@ -35,6 +35,7 @@ static lv_coord_t g_screen_h = 0;
 lv_obj_t* ui_root = nullptr;
 static lv_obj_t* cont_navbar = nullptr;
 static lv_obj_t* cont_grid   = nullptr;
+static lv_obj_t* card_rpm = nullptr;
 static lv_obj_t* cont_rpm_detail = nullptr;
 static lv_obj_t* btn_resolutions[3] = {nullptr, nullptr, nullptr};
 static lv_obj_t* btn_back = nullptr;
@@ -198,18 +199,20 @@ static void build_navbar(lv_obj_t* parent, lv_coord_t w)
     lv_obj_set_height(cont_navbar, LV_SIZE_CONTENT);
     lv_obj_set_style_min_height(cont_navbar, 56, 0);
     lv_obj_set_layout(cont_navbar, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(cont_navbar, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(cont_navbar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_flow(cont_navbar, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont_navbar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_row(cont_navbar, 8, 0);
 
     lv_obj_t* lbl_title = lv_label_create(cont_navbar);
     lv_obj_add_style(lbl_title, &st_value_medium, 0);
     lv_label_set_text(lbl_title, "Marine Overview");
-    lv_obj_set_flex_grow(lbl_title, 1);
+    lv_label_set_long_mode(lbl_title, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(lbl_title, LV_PCT(100));
 
     lv_obj_t* tabs = lv_obj_create(cont_navbar);
     lv_obj_remove_style_all(tabs);
     lv_obj_add_style(tabs, &st_tabstrip, 0);
-    lv_obj_set_style_max_width(tabs, LV_PCT(100), 0);
+    lv_obj_set_width(tabs, LV_PCT(100));
     lv_obj_set_layout(tabs, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(tabs, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_flex_align(tabs, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -259,6 +262,7 @@ static void build_grid(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
 
     lv_obj_t* c_speed = make_metric_card(cont_grid, "SPEED", "7.4 kts", COL_CYAN, true);
     lv_obj_t* c_rpm   = make_metric_card(cont_grid, "ENGINE RPM", "1350", COL_ORANGE, true);
+    card_rpm = c_rpm;
     lv_obj_t* c_batt  = make_metric_card(cont_grid, "REMAINING POWER", "78%", COL_GREEN, true);
     lv_obj_t* c_wind  = make_metric_card(cont_grid, "STW", "14.2 kts", COL_CYAN);
     lv_obj_t* c_ap    = make_metric_card(cont_grid, "AUTOPILOT", "TRACK", COL_ORANGE);
@@ -284,11 +288,20 @@ static void build_grid(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_set_style_text_color(badge, COL_GREEN, 0);
     lv_obj_align(badge, LV_ALIGN_BOTTOM_RIGHT, -12, -12);
 
-    // RPM detail navigation
-    lv_obj_add_flag(c_rpm, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(c_rpm, [](lv_event_t* e) {
-        LV_UNUSED(e);
-        show_rpm_detail(true);
+    // Page-level touch handling for detail navigation
+    lv_obj_add_flag(cont_grid, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(cont_grid, [](lv_event_t* e) {
+        lv_indev_t* indev = lv_indev_get_act();
+        if (!indev || !card_rpm) return;
+
+        lv_point_t p;
+        lv_indev_get_point(indev, &p);
+
+        lv_area_t rpm_area;
+        lv_obj_get_coords(card_rpm, &rpm_area);
+        if (p.x >= rpm_area.x1 && p.x <= rpm_area.x2 && p.y >= rpm_area.y1 && p.y <= rpm_area.y2) {
+            show_rpm_detail(true);
+        }
     }, LV_EVENT_CLICKED, nullptr);
 }
 
@@ -365,6 +378,8 @@ static lv_obj_t* make_chip_button(lv_obj_t* parent,
     lv_obj_t* lbl = lv_label_create(btn);
     lv_obj_add_style(lbl, &st_label, 0);
     lv_label_set_text(lbl, text);
+    lv_label_set_long_mode(lbl, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(lbl, LV_SIZE_CONTENT);
     lv_obj_center(lbl);
     return btn;
 }
@@ -402,19 +417,27 @@ static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_set_style_pad_column(header, 10, 0);
     lv_obj_set_style_pad_row(header, 8, 0);
     lv_obj_set_layout(header, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(header, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_flow(header, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(header, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
-    btn_back = make_chip_button(header, "← Back", [](lv_event_t* e) {
+    lv_obj_t* title_row = lv_obj_create(header);
+    lv_obj_remove_style_all(title_row);
+    lv_obj_set_width(title_row, LV_PCT(100));
+    lv_obj_set_layout(title_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(title_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(title_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(title_row, 8, 0);
+
+    btn_back = make_chip_button(title_row, "← Back", [](lv_event_t* e) {
         LV_UNUSED(e);
         show_rpm_detail(false);
     }, nullptr, &st_chip_ghost, nullptr, false);
 
-    lv_obj_t* lbl_title = lv_label_create(header);
+    lv_obj_t* lbl_title = lv_label_create(title_row);
     lv_obj_add_style(lbl_title, &st_label, 0);
     lv_label_set_text(lbl_title, "RPM Monitor");
+    lv_label_set_long_mode(lbl_title, LV_LABEL_LONG_CLIP);
     lv_obj_set_flex_grow(lbl_title, 1);
-    lv_obj_set_style_min_width(lbl_title, 96, 0);
 
     lv_obj_t* res_group = lv_obj_create(header);
     lv_obj_remove_style_all(res_group);
@@ -422,7 +445,7 @@ static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_set_style_pad_column(res_group, 8, 0);
     lv_obj_set_layout(res_group, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(res_group, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_style_max_width(res_group, LV_PCT(100), 0);
+    lv_obj_set_width(res_group, LV_PCT(100));
 
     btn_resolutions[0] = make_chip_button(res_group, "6h", [](lv_event_t* e) {
         set_rpm_resolution(0);
