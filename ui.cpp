@@ -26,7 +26,7 @@ static const lv_color_t COL_MUTED_TEXT = lv_color_hex(0x8493A8);
 static const lv_color_t COL_GRAPH_GRID = lv_color_hex(0x202633);
 
 // ---- Styles ----
-static lv_style_t st_screen, st_card, st_caption, st_value_big, st_value_medium, st_label;
+static lv_style_t st_screen, st_navbar, st_card, st_caption, st_value_big, st_value_medium, st_label;
 static lv_style_t st_chip, st_chip_checked, st_chip_ghost, st_chart_bg;
 
 static lv_coord_t g_screen_w = 0;
@@ -34,6 +34,7 @@ static lv_coord_t g_screen_h = 0;
 
 // ---- Roots ----
 lv_obj_t* ui_root = nullptr;
+static lv_obj_t* cont_navbar = nullptr;
 static lv_obj_t* cont_grid   = nullptr;
 static lv_obj_t* card_rpm = nullptr;
 static lv_obj_t* cont_rpm_detail = nullptr;
@@ -115,6 +116,14 @@ static void apply_styles()
     lv_style_set_bg_opa(&st_screen, LV_OPA_COVER);
     lv_style_set_pad_all(&st_screen, outer_pad);
 
+    lv_style_init(&st_navbar);
+    lv_style_set_bg_color(&st_navbar, COL_BG_MAIN);
+    lv_style_set_bg_opa(&st_navbar, LV_OPA_TRANSP);
+    lv_style_set_pad_left(&st_navbar, 0);
+    lv_style_set_pad_right(&st_navbar, 0);
+    lv_style_set_pad_top(&st_navbar, 0);
+    lv_style_set_pad_bottom(&st_navbar, 6);
+
     lv_style_init(&st_card);
     lv_style_set_bg_color(&st_card, COL_BG_CARD);
     lv_style_set_bg_opa(&st_card, LV_OPA_COVER);
@@ -180,6 +189,22 @@ static void apply_styles()
     lv_style_set_outline_color(&st_chart_bg, COL_GRAPH_GRID);
     lv_style_set_outline_opa(&st_chart_bg, LV_OPA_40);
     lv_style_set_outline_width(&st_chart_bg, 1);
+}
+
+static void build_navbar(lv_obj_t* parent, lv_coord_t w)
+{
+    LV_UNUSED(w);
+    cont_navbar = lv_obj_create(parent);
+    lv_obj_remove_style_all(cont_navbar);
+    lv_obj_add_style(cont_navbar, &st_navbar, 0);
+    lv_obj_set_width(cont_navbar, LV_PCT(100));
+    lv_obj_set_height(cont_navbar, LV_SIZE_CONTENT);
+
+    lv_obj_t* lbl_title = lv_label_create(cont_navbar);
+    lv_obj_add_style(lbl_title, &st_value_medium, 0);
+    lv_label_set_text(lbl_title, "Marine Overview");
+    lv_label_set_long_mode(lbl_title, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(lbl_title, LV_PCT(100));
 }
 
 static void build_grid(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
@@ -427,7 +452,10 @@ static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_obj_add_style(header, &st_card, 0);
     lv_obj_set_width(header, LV_PCT(100));
     lv_obj_set_height(header, LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(header, 4, 0);
+    lv_obj_set_style_pad_left(header, 4, 0);
+    lv_obj_set_style_pad_right(header, 4, 0);
+    lv_obj_set_style_pad_top(header, 4, 0);
+    lv_obj_set_style_pad_bottom(header, 4, 0);
     lv_obj_set_style_radius(header, 12, 0);
     lv_obj_set_layout(header, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
@@ -448,15 +476,13 @@ static void build_rpm_detail(lv_obj_t* parent, lv_coord_t w, lv_coord_t h)
     lv_label_set_text(lbl_title, "RPM Monitor");
     lv_label_set_long_mode(lbl_title, LV_LABEL_LONG_CLIP);
     lv_obj_set_flex_grow(lbl_title, 1);
-    lv_obj_set_width(lbl_title, LV_PCT(40));
 
     lv_obj_t* res_group = lv_obj_create(header);
     lv_obj_remove_style_all(res_group);
     lv_obj_set_layout(res_group, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(res_group, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(res_group, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(res_group, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(res_group, 4, 0);
-    lv_obj_set_style_max_width(res_group, LV_PCT(45), 0);
 
     btn_resolutions[0] = make_chip_button(res_group, "6h", [](lv_event_t* e) { set_rpm_resolution(0); }, nullptr);
     btn_resolutions[1] = make_chip_button(res_group, "12h", [](lv_event_t* e) { set_rpm_resolution(1); }, nullptr);
@@ -570,6 +596,7 @@ void ui_init(void)
     lv_obj_set_flex_flow(ui_root, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(ui_root, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
+    build_navbar(ui_root, w);
     build_grid(ui_root, w, h);
     build_rpm_detail(ui_root, w, h);
 }
